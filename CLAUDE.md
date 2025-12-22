@@ -8,15 +8,17 @@ This is a **security-hardened GitHub Action** for installing the [Leo](https://g
 
 ## Architecture
 
-**Composite Action** (`action.yml`) - A single-file GitHub Action written entirely in bash:
+**Composite Action** (`action.yml`) - A single-file GitHub Action written entirely in bash (~550 lines):
 - Uses only `actions/cache` (SHA-pinned) as external dependency
 - Inlines rustup instead of using third-party actions like `dtolnay/rust-toolchain`
 - Two separate caches: binary cache (version+OS+arch) and cargo registry cache (version+rust+OS+arch)
 - Flow: validate inputs → restore binary cache → (if miss) install Rust → restore cargo cache → clone Leo tag → optional cargo audit → build with `--locked` → install binary → save caches → cleanup
 
+See `ARCHITECTURE.md` for detailed design diagrams and rationale. See `THREAT_MODEL.md` for security analysis and trust boundaries.
+
 ## Development Commands
 
-### Testing the action locally
+### Local validation
 ```bash
 # Validate action.yml syntax
 python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
@@ -24,14 +26,19 @@ python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
 # Lint shell scripts
 shellcheck scripts/*.sh
 
-# Verify a Leo release before updating
+# Verify a Leo release before updating (checks tag exists, Cargo.lock, runs audit)
 ./scripts/verify-release.sh 3.4.0
 ```
 
-### CI runs automatically on
-- Push to main (tests + cache save)
-- Pull requests (tests only, no cache save)
-- Weekly schedule (keeps caches fresh)
+### CI test matrix
+The CI workflow (`.github/workflows/test.yml`) tests:
+- Linux (ubuntu-24.04)
+- macOS ARM64 (macos-14)
+- macOS x86 (macos-13)
+- Multiple Rust versions (stable, 1.83.0, 1.80.0)
+- Cache restore behavior
+
+CI runs on: push to main (tests + cache save), pull requests (tests only), weekly schedule (keeps caches fresh).
 
 ## Key Design Decisions
 
@@ -45,3 +52,47 @@ shellcheck scripts/*.sh
 - All external action SHAs must be verified before use
 - The `--locked` flag is critical - never remove it from cargo build
 - GPG/SLSA checks in verify-release.sh are informational only (ProvableHQ doesn't sign releases)
+- When updating Leo versions, always run `./scripts/verify-release.sh <version>` first
+
+## Adding New Leo Versions to CI
+
+When a new Leo version is released, update `.github/workflows/test.yml`:
+
+1. Check the required Rust version:
+   ```bash
+   curl -s "https://raw.githubusercontent.com/ProvableHQ/leo/v<VERSION>/rust-toolchain.toml"
+   ```
+
+2. Add to the `test-leo-versions` matrix in `test.yml`:
+   ```yaml
+   - leo: "<VERSION>"
+     rust: "<RUST_VERSION>"  # from rust-toolchain.toml
+   ```
+
+3. Update `LEO_VERSION` env var at top of workflow if it should be the new default
+
+## Local Testing with `act`
+
+For testing the action locally using [nektos/act](https://github.com/nektos/act), see `docs/ACT_TESTING_GUIDE.md` for comprehensive setup instructions across platforms.
+
+Quick start (requires Docker, Colima, or Podman):
+```bash
+# Create .actrc in project root
+echo '-P ubuntu-24.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-latest=catthehacker/ubuntu:act-22.04
+--container-architecture linux/arm64' > .actrc
+
+# Run Linux test job
+act push -j test-linux
+```
+
+**Limitations:** macOS/Windows runner jobs cannot be tested locally (act only supports Linux containers). The `actions/cache` uses a local cache server instead of GitHub's.
+
+## File Structure
+
+- `action.yml` - Main action logic (composite action with bash steps)
+- `scripts/verify-release.sh` - Pre-update verification script
+- `examples/` - Sample workflow configurations for users
+- `docs/ACT_TESTING_GUIDE.md` - Comprehensive guide for local testing with act
+- `THREAT_MODEL.md` - Security analysis and trust assumptions
+- `ARCHITECTURE.md` - Design decisions and flow diagrams

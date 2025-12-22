@@ -140,33 +140,51 @@ jobs:
           echo "Build time: ${BUILD_TIME}s"
 
   # ===========================================================================
-  # Test with different Rust versions
+  # Test Leo versions with compatible Rust toolchains
   # ===========================================================================
-  test-rust-versions:
-    name: Test (Rust ${{ matrix.rust }})
+  # Rust versions are from each release's rust-toolchain.toml:
+  # https://github.com/ProvableHQ/leo/blob/<tag>/rust-toolchain.toml
+  # ===========================================================================
+  test-leo-versions:
+    name: Test (Leo ${{ matrix.leo }} / Rust ${{ matrix.rust }})
     runs-on: ubuntu-24.04
-    
+
     strategy:
       fail-fast: false
       matrix:
-        rust:
-          - "stable"
-          - "1.83.0"
-          - "1.80.0"  # Test older version
-    
+        include:
+          # Latest release - also test with stable Rust
+          - leo: "3.4.0"
+            rust: "stable"
+          # v3.4.0 requires Rust 1.90.0
+          - leo: "3.4.0"
+            rust: "1.90.0"
+          # v3.3.x requires Rust 1.90.0
+          - leo: "3.3.1"
+            rust: "1.90.0"
+          # v3.2.0 requires Rust 1.88.0
+          - leo: "3.2.0"
+            rust: "1.88.0"
+          # v3.1.0 requires Rust 1.88.0
+          - leo: "3.1.0"
+            rust: "1.88.0"
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
-      - name: Test action with Rust ${{ matrix.rust }}
+
+      - name: Test action with Leo ${{ matrix.leo }} / Rust ${{ matrix.rust }}
         uses: ./
         with:
-          version: ${{ env.LEO_VERSION }}
+          version: ${{ matrix.leo }}
           rust-version: ${{ matrix.rust }}
-          cache-save: 'never'  # Don't pollute cache with multiple Rust versions
-      
+          cache-save: 'never'  # Don't pollute cache with multiple versions
+
       - name: Verify
-        run: leo --version
+        run: |
+          leo --version
+          # Verify version matches expected
+          leo --version | grep -q "${{ matrix.leo }}" || echo "::warning::Version mismatch"
 
   # ===========================================================================
   # Shellcheck
@@ -174,15 +192,23 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
+
+      - name: Install lint dependencies
+        run: |
+          # Install tools if missing (for act compatibility - GitHub runners have these)
+          if ! command -v shellcheck &>/dev/null || ! python3 -c "import yaml" 2>/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck python3-yaml
+          fi
+
       - name: Lint scripts
         run: |
           shellcheck scripts/*.sh || true  # Non-blocking for now
-      
+
       - name: Validate action.yml
         run: |
           # Basic YAML validation
