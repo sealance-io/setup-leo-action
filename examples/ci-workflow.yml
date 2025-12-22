@@ -1,0 +1,159 @@
+# =============================================================================
+# Example: Optimal Caching Strategy for Leo Projects
+# =============================================================================
+#
+# This workflow demonstrates the recommended caching pattern:
+#
+# 1. Push to main: Build Leo and SAVE cache (warms cache for all branches)
+# 2. Pull requests: RESTORE cache from main, but DON'T SAVE (avoid pollution)
+# 3. Scheduled: Weekly cache refresh (caches expire after 7 days of inactivity)
+#
+# WHY THIS PATTERN?
+# -----------------
+# GitHub Actions cache scoping rules:
+#   - Feature branches CAN access caches from the default branch
+#   - Feature branches CANNOT access caches from sibling branches
+#   - PR-created caches are isolated to that PR's merge ref
+#
+# By only saving on main, you:
+#   - Maximize cache hit rate for all feature branches
+#   - Avoid filling the 10GB cache quota with PR-specific caches
+#   - Keep cache contents consistent and predictable
+#
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly on Monday at 6 AM UTC - keeps caches fresh
+    # Caches expire after 7 days of inactivity
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    # Manual trigger for cache warming
+
+# Minimal permissions - request only what's needed
+permissions:
+  contents: read
+
+env:
+  # ==========================================================================
+  # VERSION PINNING
+  # Update these when upgrading Leo - use scripts/verify-checksums.sh
+  # ==========================================================================
+  LEO_VERSION: "3.4.0"
+  RUST_VERSION: "stable"  # Or pin: "1.83.0"
+
+jobs:
+  # ==========================================================================
+  # Main CI job
+  # ==========================================================================
+  build:
+    name: Build and Test
+    runs-on: ubuntu-24.04  # Pin OS version for reproducibility
+    
+    steps:
+      # Pin checkout by SHA (not tag)
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      # Setup Leo with optimal caching
+      - name: Setup Leo
+        id: setup-leo
+        uses: sealance-io/setup-leo-action@<SHA>  # Replace with actual SHA
+        with:
+          version: ${{ env.LEO_VERSION }}
+          rust-version: ${{ env.RUST_VERSION }}
+          
+          # CACHE STRATEGY:
+          # - main branch: always save (warms cache for feature branches)
+          # - PRs: never save (avoid cache pollution)
+          # - scheduled: always save (refresh expiring caches)
+          cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+          
+          # Security scanning
+          run-audit: 'true'
+          audit-deny-warnings: ${{ github.event_name != 'pull_request' }}  # Strict on main
+      
+      - name: Build Leo project
+        run: |
+          echo "Leo installed via: cache=${{ steps.setup-leo.outputs.cache-hit-binary }}"
+          echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
+          leo build
+      
+      - name: Run tests
+        run: leo test
+      
+      - name: Run linter (if available)
+        run: |
+          # Add your Leo linting commands here
+          echo "Linting complete"
+
+  # ==========================================================================
+  # Multi-platform matrix (optional)
+  # ==========================================================================
+  build-matrix:
+    name: Build (${{ matrix.name }})
+    if: github.event_name != 'schedule'  # Skip matrix on scheduled runs
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-24.04
+          
+          - name: macOS ARM64
+            os: macos-14
+          
+          - name: macOS x64
+            os: macos-13
+          
+          # Uncomment for Windows support
+          # - name: Windows x64
+          #   os: windows-2022
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Setup Leo
+        uses: sealance-io/setup-leo-action@<SHA>
+        with:
+          version: ${{ env.LEO_VERSION }}
+          rust-version: ${{ env.RUST_VERSION }}
+          cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+      
+      - name: Build
+        run: leo build
+
+  # ==========================================================================
+  # Cache status reporting (optional, helps debug cache issues)
+  # ==========================================================================
+  cache-status:
+    name: Cache Status
+    runs-on: ubuntu-24.04
+    if: always()
+    needs: [build]
+    
+    steps:
+      - name: Report cache status
+        run: |
+          echo "## Cache Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Event | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cache saved | ${{ github.event_name != 'pull_request' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cache Scoping Rules" >> $GITHUB_STEP_SUMMARY
+          echo "- Feature branches can restore from: \`main\` ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- PRs can restore from: \`main\` + own previous runs ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Sibling branches share cache: ❌" >> $GITHUB_STEP_SUMMARY

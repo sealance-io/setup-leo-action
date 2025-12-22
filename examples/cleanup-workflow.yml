@@ -1,0 +1,96 @@
+# =============================================================================
+# Example: PR Cache Cleanup Workflow
+# =============================================================================
+#
+# WHY THIS WORKFLOW?
+# ------------------
+# When PRs create caches, those caches:
+#   1. Are isolated to the PR's merge ref (refs/pull/###/merge)
+#   2. Cannot be accessed by other PRs or branches
+#   3. Count against the 10GB repository cache quota
+#   4. Persist for 7 days after last access
+#
+# Without cleanup, stale PR caches accumulate and may evict useful caches
+# from the default branch (which ARE shared with all branches).
+#
+# WHEN TO USE THIS:
+# -----------------
+# - If you're hitting the 10GB cache limit
+# - If you have many PRs creating caches
+# - If you notice cache thrashing (useful caches being evicted)
+#
+# If you follow the recommended pattern of cache-save: 'never' on PRs,
+# this workflow is UNNECESSARY since PRs won't create caches.
+#
+# =============================================================================
+
+name: Cleanup PR Caches
+
+on:
+  pull_request:
+    types: [closed]
+
+# Required permissions for cache management
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    name: Delete PR Caches
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Cleanup caches for closed PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+        run: |
+          echo "Cleaning up caches for PR #${{ github.event.pull_request.number }}"
+          echo "Ref: ${PR_REF}"
+          echo ""
+          
+          # List caches for this PR's ref
+          CACHES=$(gh cache list --ref "${PR_REF}" --limit 100 --json id,key,sizeInBytes 2>/dev/null || echo "[]")
+          
+          if [[ "${CACHES}" == "[]" || -z "${CACHES}" ]]; then
+            echo "No caches found for this PR"
+            exit 0
+          fi
+          
+          echo "Found caches:"
+          echo "${CACHES}" | jq -r '.[] | "  - \(.key) (\(.sizeInBytes / 1024 / 1024 | floor)MB)"'
+          echo ""
+          
+          # Delete each cache
+          DELETED=0
+          TOTAL_SIZE=0
+          
+          for CACHE_ID in $(echo "${CACHES}" | jq -r '.[].id'); do
+            SIZE=$(echo "${CACHES}" | jq -r ".[] | select(.id == ${CACHE_ID}) | .sizeInBytes")
+            KEY=$(echo "${CACHES}" | jq -r ".[] | select(.id == ${CACHE_ID}) | .key")
+            
+            if gh cache delete "${CACHE_ID}" 2>/dev/null; then
+              echo "✓ Deleted: ${KEY}"
+              DELETED=$((DELETED + 1))
+              TOTAL_SIZE=$((TOTAL_SIZE + SIZE))
+            else
+              echo "✗ Failed to delete: ${KEY}"
+            fi
+          done
+          
+          TOTAL_MB=$((TOTAL_SIZE / 1024 / 1024))
+          echo ""
+          echo "Summary:"
+          echo "  Caches deleted: ${DELETED}"
+          echo "  Space freed: ${TOTAL_MB}MB"
+          
+          # Add to job summary
+          echo "## PR Cache Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| PR | #${{ github.event.pull_request.number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Caches deleted | ${DELETED} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Space freed | ${TOTAL_MB}MB |" >> $GITHUB_STEP_SUMMARY

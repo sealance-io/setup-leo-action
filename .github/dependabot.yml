@@ -1,0 +1,58 @@
+# =============================================================================
+# Dependabot Configuration
+# =============================================================================
+#
+# Automatically checks for updates to:
+# - GitHub Actions (weekly)
+#
+# SHA-pinned actions are updated while preserving the version comment.
+# Example:
+#   Before: uses: actions/cache@abc123 # v4.2.0
+#   After:  uses: actions/cache@def456 # v4.2.1
+#
+# WHY USE DEPENDABOT FOR ACTIONS?
+# -------------------------------
+# 1. Security: Get notified of action updates (including security fixes)
+# 2. Convenience: Automatic PRs with changelog
+# 3. Safety: PRs allow review before merging
+#
+# IMPORTANT: Always review Dependabot PRs before merging.
+# The tj-actions compromise showed that even "update" PRs can be vectors
+# if the upstream is compromised.
+#
+# =============================================================================
+
+version: 2
+
+updates:
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    
+    # Group all action updates into single PR
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    
+    # Limit open PRs
+    open-pull-requests-limit: 5
+    
+    # Commit message format
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    
+    # Labels for PRs
+    labels:
+      - "dependencies"
+      - "github-actions"
+    
+    # Reviewers (customize for your team)
+    # reviewers:
+    #   - "sealance-io/security-team"

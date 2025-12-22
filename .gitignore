@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local testing
+tmp/
+*.log
+
+# Local action testing (nektos/act)
+.actrc
+.secrets
+.env
+.env.*
+
+# LLM tools
+.aider*
+.claude/
+.continue/
+.copilot/
+.codeium/
+.tabnine/

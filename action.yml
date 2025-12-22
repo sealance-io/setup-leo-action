@@ -1,0 +1,551 @@
+# SPDX-License-Identifier: Apache-2.0
+# =============================================================================
+# setup-leo-action: Security-Hardened GitHub Action for Leo Compiler
+# =============================================================================
+#
+# SECURITY MODEL (Source-Only Build):
+# ------------------------------------
+# This action ALWAYS builds Leo from source. We do not use pre-built binaries
+# because ProvableHQ's releases lack cryptographic verification:
+#   - No GPG signatures on releases or tags
+#   - No Sigstore/cosign signatures  
+#   - No SLSA provenance attestations
+#   - No GitHub artifact attestations
+#   - SHA256 checksums are self-attested (useless if release pipeline compromised)
+#
+# By building from source, we:
+#   1. Verify the exact code being compiled (git tag)
+#   2. Use --locked to respect upstream Cargo.lock (reproducibility)
+#   3. Run cargo audit/deny for vulnerability scanning (optional)
+#   4. Avoid trusting binary release infrastructure
+#
+# TRUST SURFACE:
+# --------------
+# - GitHub infrastructure (unavoidable)
+# - ProvableHQ/leo GitHub repository (git clone of specific tag)
+# - rustup.rs (official Rust project)
+# - crates.io (transitive dependencies via Cargo.lock)
+#
+# FUTURE-PROOFING:
+# ----------------
+# If ProvableHQ adopts proper release signing (GPG, Sigstore, SLSA), this action
+# can be extended to support verified binary downloads. See THREAT_MODEL.md for the
+# criteria that would enable this.
+#
+# CACHING STRATEGY:
+# -----------------
+# Two separate caches with different invalidation patterns:
+#   1. Leo binary cache: Keyed by version + OS + arch (stable, long-lived)
+#   2. Cargo registry cache: Keyed by Cargo.lock hash (changes with deps)
+#
+# Cache scoping: Feature branches can access default branch caches.
+# Recommendation: Run this action on push to main to warm caches for PRs.
+#
+# =============================================================================
+
+name: 'Setup Leo Compiler (Source Build)'
+description: 'Install the Leo programming language compiler by building from source with full security hardening'
+author: 'Your Organization'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  version:
+    description: 'Leo version to install (without v prefix, e.g., "3.4.0")'
+    required: true
+  
+  rust-version:
+    description: 'Rust toolchain version (e.g., "1.83.0" or "stable")'
+    required: false
+    default: 'stable'
+  
+  enable-cache:
+    description: 'Enable caching of Leo binary and cargo registry'
+    required: false
+    default: 'true'
+  
+  cache-save:
+    description: |
+      When to save cache. Options:
+      - "always": Save on every run (use for default branch)
+      - "on-success": Save only if build succeeds
+      - "never": Never save (use for PRs to avoid cache pollution)
+      Recommendation: "always" on default branch, "never" on PRs
+    required: false
+    default: 'on-success'
+  
+  run-audit:
+    description: 'Run cargo audit to check for known vulnerabilities in dependencies'
+    required: false
+    default: 'true'
+  
+  audit-deny-warnings:
+    description: 'Fail if cargo audit finds any warnings (not just errors)'
+    required: false
+    default: 'false'
+  
+  working-directory:
+    description: 'Directory to clone and build Leo (default: runner temp)'
+    required: false
+    default: ''
+
+outputs:
+  leo-version:
+    description: 'Installed Leo version string'
+    value: ${{ steps.verify.outputs.version }}
+  
+  cache-hit-binary:
+    description: 'Whether the Leo binary was restored from cache'
+    value: ${{ steps.cache-leo-binary.outputs.cache-hit }}
+  
+  cache-hit-cargo:
+    description: 'Whether the cargo registry was restored from cache'
+    value: ${{ steps.cache-cargo-registry.outputs.cache-hit }}
+  
+  build-time-seconds:
+    description: 'Time taken to build Leo (0 if cached)'
+    value: ${{ steps.build.outputs.duration || '0' }}
+
+runs:
+  using: 'composite'
+  steps:
+    # =========================================================================
+    # STEP 1: Validate inputs and set up environment
+    # =========================================================================
+    - name: Validate inputs and configure environment
+      id: config
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        echo "::group::Configuration"
+        
+        # Validate version format
+        VERSION="${{ inputs.version }}"
+        if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+          echo "::error::Invalid version format: ${VERSION}"
+          echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 3.4.0 or 3.4.0-beta.1)"
+          exit 1
+        fi
+        
+        # Determine working directory
+        if [[ -n "${{ inputs.working-directory }}" ]]; then
+          WORKDIR="${{ inputs.working-directory }}"
+        else
+          WORKDIR="${{ runner.temp }}/leo-build"
+        fi
+        mkdir -p "${WORKDIR}"
+        
+        # Platform detection
+        OS="${{ runner.os }}"
+        ARCH="${{ runner.arch }}"
+        
+        case "${OS}" in
+          Linux)  PLATFORM="linux" ;;
+          macOS)  PLATFORM="darwin" ;;
+          Windows) PLATFORM="windows" ;;
+          *) echo "::error::Unsupported OS: ${OS}"; exit 1 ;;
+        esac
+        
+        case "${ARCH}" in
+          X64)   ARCH_SUFFIX="x86_64" ;;
+          ARM64) ARCH_SUFFIX="aarch64" ;;
+          *) echo "::error::Unsupported architecture: ${ARCH}"; exit 1 ;;
+        esac
+        
+        # Generate cache keys
+        # Binary cache: stable across builds of same version
+        BINARY_CACHE_KEY="leo-binary-v${{ inputs.version }}-${PLATFORM}-${ARCH_SUFFIX}"
+        
+        # Cargo cache: includes rust version since different toolchains produce different artifacts
+        CARGO_CACHE_KEY="leo-cargo-v${{ inputs.version }}-${{ inputs.rust-version }}-${PLATFORM}-${ARCH_SUFFIX}"
+        
+        echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+        echo "workdir=${WORKDIR}" >> "${GITHUB_OUTPUT}"
+        echo "platform=${PLATFORM}" >> "${GITHUB_OUTPUT}"
+        echo "arch=${ARCH_SUFFIX}" >> "${GITHUB_OUTPUT}"
+        echo "binary-cache-key=${BINARY_CACHE_KEY}" >> "${GITHUB_OUTPUT}"
+        echo "cargo-cache-key=${CARGO_CACHE_KEY}" >> "${GITHUB_OUTPUT}"
+        
+        echo "Leo version: ${VERSION}"
+        echo "Platform: ${PLATFORM}-${ARCH_SUFFIX}"
+        echo "Working directory: ${WORKDIR}"
+        echo "Binary cache key: ${BINARY_CACHE_KEY}"
+        echo "Cargo cache key: ${CARGO_CACHE_KEY}"
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 2: Restore Leo binary from cache (if enabled)
+    # =========================================================================
+    - name: Restore Leo binary from cache
+      id: cache-leo-binary
+      if: inputs.enable-cache == 'true'
+      # Pin by SHA - this is GitHub's official action
+      # SHA for actions/cache@v4.2.0 - verify at https://github.com/actions/cache/releases
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ${{ runner.os == 'Windows' && format('{0}/.local/bin/leo.exe', runner.temp) || '/usr/local/bin/leo' }}
+        key: ${{ steps.config.outputs.binary-cache-key }}
+
+    - name: Check if Leo already available
+      id: check-leo
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        if command -v leo &>/dev/null; then
+          INSTALLED_VERSION=$(leo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+          if [[ "${INSTALLED_VERSION}" == "${{ inputs.version }}" ]]; then
+            echo "::notice::Leo v${{ inputs.version }} restored from cache"
+            echo "skip-build=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+        fi
+        
+        # Check if binary was restored to expected location but not in PATH
+        if [[ "${{ runner.os }}" != "Windows" && -x "/usr/local/bin/leo" ]]; then
+          INSTALLED_VERSION=$(/usr/local/bin/leo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+          if [[ "${INSTALLED_VERSION}" == "${{ inputs.version }}" ]]; then
+            echo "::notice::Leo v${{ inputs.version }} restored from cache"
+            echo "skip-build=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+        fi
+        
+        echo "skip-build=false" >> "${GITHUB_OUTPUT}"
+
+    # =========================================================================
+    # STEP 3: Install Rust toolchain (only if building)
+    # =========================================================================
+    - name: Install Rust toolchain
+      id: rust
+      if: steps.check-leo.outputs.skip-build != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        echo "::group::Installing Rust ${{ inputs.rust-version }}"
+        
+        # =====================================================================
+        # WHY WE INLINE RUSTUP INSTEAD OF USING dtolnay/rust-toolchain:
+        # -------------------------------------------------------------
+        # dtolnay/rust-toolchain is excellent but has a documented risk:
+        # "Any commit that is not within the history of master will eventually
+        # get garbage-collected and your workflows will fail."
+        # 
+        # This means pinning by SHA can break if dtolnay rebases master.
+        # Since the rustup invocation is ~10 lines, we inline it for stability.
+        # 
+        # Trust surface is identical: rustup.rs (official Rust project)
+        # =====================================================================
+        
+        # Download and run rustup with security flags
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
+          -y \
+          --default-toolchain "${{ inputs.rust-version }}" \
+          --profile minimal \
+          --no-modify-path
+        
+        # Add to PATH for subsequent steps
+        echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
+        
+        # Source for current step
+        source "${HOME}/.cargo/env"
+        
+        # Verify installation
+        rustc --version
+        cargo --version
+        
+        # Export version info for cache keys
+        RUSTC_VERSION=$(rustc --version)
+        echo "rustc-version=${RUSTC_VERSION}" >> "${GITHUB_OUTPUT}"
+        
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 4: Restore cargo registry cache (only if building)
+    # =========================================================================
+    - name: Restore cargo registry cache
+      id: cache-cargo-registry
+      if: steps.check-leo.outputs.skip-build != 'true' && inputs.enable-cache == 'true'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ steps.config.outputs.cargo-cache-key }}
+        restore-keys: |
+          leo-cargo-v${{ inputs.version }}-${{ inputs.rust-version }}-${{ steps.config.outputs.platform }}-
+          leo-cargo-v${{ inputs.version }}-${{ inputs.rust-version }}-
+          leo-cargo-v${{ inputs.version }}-
+
+    # =========================================================================
+    # STEP 5: Clone Leo repository (only if building)
+    # =========================================================================
+    - name: Clone Leo repository
+      id: clone
+      if: steps.check-leo.outputs.skip-build != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        VERSION="${{ inputs.version }}"
+        WORKDIR="${{ steps.config.outputs.workdir }}"
+        
+        echo "::group::Cloning Leo v${VERSION} from GitHub"
+        
+        # =====================================================================
+        # WHY WE CLONE FROM GITHUB INSTEAD OF cargo install FROM crates.io:
+        # ------------------------------------------------------------------
+        # 1. Source provenance: Git tag is tied to specific commit
+        # 2. Cargo.lock included: Ensures reproducible dependency versions
+        # 3. Audit capability: We can inspect source before building
+        # 4. Version alignment: GitHub releases align with git tags
+        #    (crates.io versions may diverge or be published by different keys)
+        # =====================================================================
+        
+        # Clone only the specific tag (shallow clone for speed)
+        git clone \
+          --depth 1 \
+          --branch "v${VERSION}" \
+          --single-branch \
+          https://github.com/ProvableHQ/leo.git \
+          "${WORKDIR}/leo"
+        
+        cd "${WORKDIR}/leo"
+        
+        # Verify we're on the expected tag
+        ACTUAL_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+        echo "Cloned tag: ${ACTUAL_TAG}"
+        
+        if [[ "${ACTUAL_TAG}" != "v${VERSION}" ]]; then
+          echo "::error::Tag mismatch! Expected v${VERSION}, got ${ACTUAL_TAG}"
+          exit 1
+        fi
+        
+        # Record commit for provenance
+        COMMIT_SHA=$(git rev-parse HEAD)
+        echo "Commit SHA: ${COMMIT_SHA}"
+        echo "commit-sha=${COMMIT_SHA}" >> "${GITHUB_OUTPUT}"
+        
+        # Check for GPG signature (informational only - ProvableHQ doesn't sign)
+        echo ""
+        echo "--- GPG Signature Check (Informational) ---"
+        if git verify-tag "v${VERSION}" 2>/dev/null; then
+          echo "✓ Tag is GPG signed and verified"
+          echo "tag-signed=true" >> "${GITHUB_OUTPUT}"
+        else
+          echo "⚠ Tag is NOT GPG signed"
+          echo "  This is expected for ProvableHQ releases"
+          echo "  See THREAT_MODEL.md for implications"
+          echo "tag-signed=false" >> "${GITHUB_OUTPUT}"
+        fi
+        
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 6: Security audit (optional, only if building)
+    # =========================================================================
+    - name: Run cargo audit
+      if: steps.check-leo.outputs.skip-build != 'true' && inputs.run-audit == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        WORKDIR="${{ steps.config.outputs.workdir }}"
+        
+        echo "::group::Running cargo audit"
+        
+        # Ensure cargo is available
+        source "${HOME}/.cargo/env" 2>/dev/null || true
+        
+        # Install cargo-audit (with --locked for reproducibility)
+        cargo install cargo-audit --locked --quiet
+        
+        cd "${WORKDIR}/leo"
+        
+        # Run audit
+        AUDIT_ARGS=""
+        if [[ "${{ inputs.audit-deny-warnings }}" == "true" ]]; then
+          AUDIT_ARGS="--deny warnings"
+        fi
+        
+        if ! cargo audit ${AUDIT_ARGS}; then
+          echo "::warning::Security vulnerabilities found in dependencies"
+          if [[ "${{ inputs.audit-deny-warnings }}" == "true" ]]; then
+            echo "::error::Failing build due to audit-deny-warnings=true"
+            exit 1
+          fi
+        fi
+        
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 7: Build Leo from source (only if not cached)
+    # =========================================================================
+    - name: Build Leo from source
+      id: build
+      if: steps.check-leo.outputs.skip-build != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        WORKDIR="${{ steps.config.outputs.workdir }}"
+        
+        echo "::group::Building Leo (this may take several minutes)"
+        
+        # Ensure cargo is available
+        source "${HOME}/.cargo/env" 2>/dev/null || true
+        
+        cd "${WORKDIR}/leo"
+        
+        # Record start time
+        START_TIME=$(date +%s)
+        
+        # =====================================================================
+        # BUILD FLAGS EXPLANATION:
+        # ------------------------
+        # --release: Optimized build (slower compile, faster runtime)
+        # --locked: Use exact versions from Cargo.lock (CRITICAL for security)
+        #           Without this, cargo may silently update dependencies
+        # 
+        # Environment:
+        # CARGO_INCREMENTAL=0: Disable incremental compilation
+        #   - Incremental artifacts don't survive cache restoration
+        #   - Saves disk space in cache
+        #   - More reproducible builds
+        # =====================================================================
+        
+        export CARGO_INCREMENTAL=0
+        
+        cargo build --release --locked
+        
+        # Record end time
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        echo "Build completed in ${DURATION} seconds"
+        echo "duration=${DURATION}" >> "${GITHUB_OUTPUT}"
+        
+        # Verify binary exists
+        if [[ ! -f "target/release/leo" ]]; then
+          echo "::error::Build completed but leo binary not found"
+          ls -la target/release/ || true
+          exit 1
+        fi
+        
+        echo "::endgroup::"
+        
+        # Install binary
+        echo "::group::Installing Leo binary"
+        
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          mkdir -p "${HOME}/.local/bin"
+          cp target/release/leo.exe "${HOME}/.local/bin/leo.exe"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          echo "Installed to: ${HOME}/.local/bin/leo.exe"
+        else
+          sudo install -m 755 target/release/leo /usr/local/bin/leo
+          echo "Installed to: /usr/local/bin/leo"
+        fi
+        
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 8: Verify installation
+    # =========================================================================
+    - name: Verify Leo installation
+      id: verify
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        echo "::group::Verifying Leo installation"
+        
+        # Ensure PATH is updated
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          export PATH="${HOME}/.local/bin:${PATH}"
+        fi
+        
+        # Verify leo is available
+        if ! command -v leo &>/dev/null; then
+          echo "::error::Leo binary not found in PATH"
+          echo "PATH: ${PATH}"
+          exit 1
+        fi
+        
+        # Get and verify version
+        leo --version
+        INSTALLED_VERSION=$(leo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        
+        if [[ "${INSTALLED_VERSION}" != "${{ inputs.version }}" ]]; then
+          echo "::warning::Version mismatch - expected ${{ inputs.version }}, got ${INSTALLED_VERSION}"
+        fi
+        
+        echo "version=${INSTALLED_VERSION}" >> "${GITHUB_OUTPUT}"
+        echo "✓ Leo v${INSTALLED_VERSION} installed successfully"
+        
+        echo "::endgroup::"
+
+    # =========================================================================
+    # STEP 9: Save caches (conditional based on cache-save input)
+    # =========================================================================
+    - name: Determine if cache should be saved
+      id: cache-save-decision
+      shell: bash
+      run: |
+        SAVE_CACHE="false"
+        
+        case "${{ inputs.cache-save }}" in
+          always)
+            SAVE_CACHE="true"
+            ;;
+          on-success)
+            # Job hasn't failed if we got here
+            SAVE_CACHE="true"
+            ;;
+          never)
+            SAVE_CACHE="false"
+            ;;
+        esac
+        
+        # Don't save if we restored from cache (nothing new to save)
+        if [[ "${{ steps.check-leo.outputs.skip-build }}" == "true" ]]; then
+          SAVE_CACHE="false"
+        fi
+        
+        echo "save-cache=${SAVE_CACHE}" >> "${GITHUB_OUTPUT}"
+
+    - name: Save Leo binary cache
+      if: inputs.enable-cache == 'true' && steps.cache-save-decision.outputs.save-cache == 'true' && steps.cache-leo-binary.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ${{ runner.os == 'Windows' && format('{0}/.local/bin/leo.exe', runner.temp) || '/usr/local/bin/leo' }}
+        key: ${{ steps.config.outputs.binary-cache-key }}
+
+    - name: Save cargo registry cache
+      if: inputs.enable-cache == 'true' && steps.cache-save-decision.outputs.save-cache == 'true' && steps.cache-cargo-registry.outputs.cache-hit != 'true'
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: ${{ steps.config.outputs.cargo-cache-key }}
+
+    # =========================================================================
+    # STEP 10: Cleanup (remove build directory to save runner disk space)
+    # =========================================================================
+    - name: Cleanup build directory
+      if: always() && steps.check-leo.outputs.skip-build != 'true'
+      shell: bash
+      run: |
+        WORKDIR="${{ steps.config.outputs.workdir }}"
+        if [[ -d "${WORKDIR}" ]]; then
+          rm -rf "${WORKDIR}"
+          echo "Cleaned up build directory: ${WORKDIR}"
+        fi

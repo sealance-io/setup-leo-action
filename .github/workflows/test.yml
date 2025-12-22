@@ -1,0 +1,190 @@
+# =============================================================================
+# CI for setup-leo-action
+# =============================================================================
+#
+# Tests the action itself to ensure it works correctly.
+# Run on:
+# - Push to main (test + save cache)
+# - Pull requests (test only)
+# - Weekly schedule (keep caches fresh)
+#
+# =============================================================================
+
+name: Test Action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LEO_VERSION: "3.4.0"  # Version to test with
+
+jobs:
+  # ===========================================================================
+  # Test on Linux
+  # ===========================================================================
+  test-linux:
+    name: Test (Linux)
+    runs-on: ubuntu-24.04
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Test action
+        id: setup-leo
+        uses: ./
+        with:
+          version: ${{ env.LEO_VERSION }}
+          cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+          run-audit: 'true'
+      
+      - name: Verify outputs
+        run: |
+          echo "Version: ${{ steps.setup-leo.outputs.leo-version }}"
+          echo "Binary cache hit: ${{ steps.setup-leo.outputs.cache-hit-binary }}"
+          echo "Cargo cache hit: ${{ steps.setup-leo.outputs.cache-hit-cargo }}"
+          echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
+      
+      - name: Verify Leo works
+        run: |
+          leo --version
+          leo --help
+      
+      - name: Test with sample project
+        run: |
+          mkdir -p test-project
+          cd test-project
+          leo new hello_world
+          cd hello_world
+          leo build
+
+  # ===========================================================================
+  # Test on macOS ARM64
+  # ===========================================================================
+  test-macos-arm:
+    name: Test (macOS ARM64)
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Test action
+        uses: ./
+        with:
+          version: ${{ env.LEO_VERSION }}
+          cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+      
+      - name: Verify Leo works
+        run: |
+          leo --version
+          which leo
+
+  # ===========================================================================
+  # Test on macOS x86
+  # ===========================================================================
+  test-macos-x86:
+    name: Test (macOS x86)
+    runs-on: macos-13
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Test action
+        uses: ./
+        with:
+          version: ${{ env.LEO_VERSION }}
+          cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
+      
+      - name: Verify Leo works
+        run: leo --version
+
+  # ===========================================================================
+  # Test cache behavior
+  # ===========================================================================
+  test-cache:
+    name: Test Cache Behavior
+    runs-on: ubuntu-24.04
+    needs: [test-linux]  # Run after first test to check cache was created
+    if: github.event_name != 'pull_request'  # Only on main (PRs don't save cache)
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Test action (should hit cache)
+        id: setup-leo
+        uses: ./
+        with:
+          version: ${{ env.LEO_VERSION }}
+          cache-save: 'never'  # Don't save, just restore
+      
+      - name: Verify cache was hit
+        run: |
+          if [[ "${{ steps.setup-leo.outputs.cache-hit-binary }}" != "true" ]]; then
+            echo "::warning::Binary cache miss - expected hit after test-linux job"
+          fi
+          
+          # Build time should be 0 or very low if cache hit
+          BUILD_TIME="${{ steps.setup-leo.outputs.build-time-seconds }}"
+          echo "Build time: ${BUILD_TIME}s"
+
+  # ===========================================================================
+  # Test with different Rust versions
+  # ===========================================================================
+  test-rust-versions:
+    name: Test (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-24.04
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        rust:
+          - "stable"
+          - "1.83.0"
+          - "1.80.0"  # Test older version
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Test action with Rust ${{ matrix.rust }}
+        uses: ./
+        with:
+          version: ${{ env.LEO_VERSION }}
+          rust-version: ${{ matrix.rust }}
+          cache-save: 'never'  # Don't pollute cache with multiple Rust versions
+      
+      - name: Verify
+        run: leo --version
+
+  # ===========================================================================
+  # Shellcheck
+  # ===========================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      
+      - name: Lint scripts
+        run: |
+          shellcheck scripts/*.sh || true  # Non-blocking for now
+      
+      - name: Validate action.yml
+        run: |
+          # Basic YAML validation
+          python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
+          echo "✓ action.yml is valid YAML"

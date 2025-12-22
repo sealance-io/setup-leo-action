@@ -1,0 +1,24 @@
+# =============================================================================
+# Example: Minimal Setup (Quick Start)
+# =============================================================================
+#
+# This is the simplest possible usage of setup-leo-action.
+# For production use, see ci-workflow.yml for optimal caching strategy.
+#
+# =============================================================================
+
+name: Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: sealance-io/setup-leo-action@<SHA>
+        with:
+          version: '3.4.0'
+      
+      - run: leo build
