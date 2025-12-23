@@ -24,6 +24,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   LEO_VERSION: "3.4.0"  # Version to test with
 
@@ -34,11 +38,13 @@ jobs:
   test-linux:
     name: Test (Linux)
     runs-on: ubuntu-24.04
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
+        with:
+          persist-credentials: false
+
       - name: Test action
         id: setup-leo
         uses: ./
@@ -48,11 +54,16 @@ jobs:
           run-audit: 'true'
       
       - name: Verify outputs
+        env:
+          LEO_VER: ${{ steps.setup-leo.outputs.leo-version }}
+          CACHE_HIT_BINARY: ${{ steps.setup-leo.outputs.cache-hit-binary }}
+          CACHE_HIT_CARGO: ${{ steps.setup-leo.outputs.cache-hit-cargo }}
+          BUILD_TIME: ${{ steps.setup-leo.outputs.build-time-seconds }}
         run: |
-          echo "Version: ${{ steps.setup-leo.outputs.leo-version }}"
-          echo "Binary cache hit: ${{ steps.setup-leo.outputs.cache-hit-binary }}"
-          echo "Cargo cache hit: ${{ steps.setup-leo.outputs.cache-hit-cargo }}"
-          echo "Build time: ${{ steps.setup-leo.outputs.build-time-seconds }}s"
+          echo "Version: ${LEO_VER}"
+          echo "Binary cache hit: ${CACHE_HIT_BINARY}"
+          echo "Cargo cache hit: ${CACHE_HIT_CARGO}"
+          echo "Build time: ${BUILD_TIME}s"
       
       - name: Verify Leo works
         run: |
@@ -77,13 +88,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
+        with:
+          persist-credentials: false
+
       - name: Test action
         uses: ./
         with:
           version: ${{ env.LEO_VERSION }}
           cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
-      
+
       - name: Verify Leo works
         run: |
           leo --version
@@ -99,13 +112,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
+        with:
+          persist-credentials: false
+
       - name: Test action
         uses: ./
         with:
           version: ${{ env.LEO_VERSION }}
           cache-save: ${{ github.event_name == 'pull_request' && 'never' || 'always' }}
-      
+
       - name: Verify Leo works
         run: leo --version
 
@@ -121,7 +136,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      
+        with:
+          persist-credentials: false
+
       - name: Test action (should hit cache)
         id: setup-leo
         uses: ./
@@ -130,13 +147,15 @@ jobs:
           cache-save: 'never'  # Don't save, just restore
       
       - name: Verify cache was hit
+        env:
+          CACHE_HIT_BINARY: ${{ steps.setup-leo.outputs.cache-hit-binary }}
+          BUILD_TIME: ${{ steps.setup-leo.outputs.build-time-seconds }}
         run: |
-          if [[ "${{ steps.setup-leo.outputs.cache-hit-binary }}" != "true" ]]; then
+          if [[ "${CACHE_HIT_BINARY}" != "true" ]]; then
             echo "::warning::Binary cache miss - expected hit after test-linux job"
           fi
-          
+
           # Build time should be 0 or very low if cache hit
-          BUILD_TIME="${{ steps.setup-leo.outputs.build-time-seconds }}"
           echo "Build time: ${BUILD_TIME}s"
 
   # ===========================================================================
@@ -172,6 +191,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Test action with Leo ${{ matrix.leo }} / Rust ${{ matrix.rust }}
         uses: ./
@@ -181,10 +202,12 @@ jobs:
           cache-save: 'never'  # Don't pollute cache with multiple versions
 
       - name: Verify
+        env:
+          EXPECTED_VERSION: ${{ matrix.leo }}
         run: |
           leo --version
           # Verify version matches expected
-          leo --version | grep -q "${{ matrix.leo }}" || echo "::warning::Version mismatch"
+          leo --version | grep -q "${EXPECTED_VERSION}" || echo "::warning::Version mismatch"
 
   # ===========================================================================
   # Shellcheck
@@ -196,6 +219,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Install lint dependencies
         run: |

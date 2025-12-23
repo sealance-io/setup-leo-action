@@ -117,58 +117,65 @@ runs:
     - name: Validate inputs and configure environment
       id: config
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_WORKING_DIR: ${{ inputs.working-directory }}
+        INPUT_RUST_VERSION: ${{ inputs.rust-version }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        RUNNER_OS: ${{ runner.os }}
+        RUNNER_ARCH: ${{ runner.arch }}
       run: |
         set -euo pipefail
-        
+
         echo "::group::Configuration"
-        
+
         # Validate version format
-        VERSION="${{ inputs.version }}"
+        VERSION="${INPUT_VERSION}"
         if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
           echo "::error::Invalid version format: ${VERSION}"
           echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 3.4.0 or 3.4.0-beta.1)"
           exit 1
         fi
-        
+
         # Determine working directory
-        if [[ -n "${{ inputs.working-directory }}" ]]; then
-          WORKDIR="${{ inputs.working-directory }}"
+        if [[ -n "${INPUT_WORKING_DIR}" ]]; then
+          WORKDIR="${INPUT_WORKING_DIR}"
         else
-          WORKDIR="${{ runner.temp }}/leo-build"
+          WORKDIR="${RUNNER_TEMP}/leo-build"
         fi
         mkdir -p "${WORKDIR}"
-        
+
         # Platform detection
-        OS="${{ runner.os }}"
-        ARCH="${{ runner.arch }}"
-        
+        OS="${RUNNER_OS}"
+        ARCH="${RUNNER_ARCH}"
+
         case "${OS}" in
           Linux)  PLATFORM="linux" ;;
           macOS)  PLATFORM="darwin" ;;
           Windows) PLATFORM="windows" ;;
           *) echo "::error::Unsupported OS: ${OS}"; exit 1 ;;
         esac
-        
+
         case "${ARCH}" in
           X64)   ARCH_SUFFIX="x86_64" ;;
           ARM64) ARCH_SUFFIX="aarch64" ;;
           *) echo "::error::Unsupported architecture: ${ARCH}"; exit 1 ;;
         esac
-        
+
         # Generate cache keys
         # Binary cache: stable across builds of same version
-        BINARY_CACHE_KEY="leo-binary-v${{ inputs.version }}-${PLATFORM}-${ARCH_SUFFIX}"
-        
+        BINARY_CACHE_KEY="leo-binary-v${INPUT_VERSION}-${PLATFORM}-${ARCH_SUFFIX}"
+
         # Cargo cache: includes rust version since different toolchains produce different artifacts
-        CARGO_CACHE_KEY="leo-cargo-v${{ inputs.version }}-${{ inputs.rust-version }}-${PLATFORM}-${ARCH_SUFFIX}"
-        
+        CARGO_CACHE_KEY="leo-cargo-v${INPUT_VERSION}-${INPUT_RUST_VERSION}-${PLATFORM}-${ARCH_SUFFIX}"
+
         echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
         echo "workdir=${WORKDIR}" >> "${GITHUB_OUTPUT}"
         echo "platform=${PLATFORM}" >> "${GITHUB_OUTPUT}"
         echo "arch=${ARCH_SUFFIX}" >> "${GITHUB_OUTPUT}"
         echo "binary-cache-key=${BINARY_CACHE_KEY}" >> "${GITHUB_OUTPUT}"
         echo "cargo-cache-key=${CARGO_CACHE_KEY}" >> "${GITHUB_OUTPUT}"
-        
+
         echo "Leo version: ${VERSION}"
         echo "Platform: ${PLATFORM}-${ARCH_SUFFIX}"
         echo "Working directory: ${WORKDIR}"
@@ -193,28 +200,31 @@ runs:
     - name: Check if Leo already available
       id: check-leo
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        RUNNER_OS: ${{ runner.os }}
       run: |
         set -euo pipefail
-        
+
         if command -v leo &>/dev/null; then
           INSTALLED_VERSION=$(leo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
-          if [[ "${INSTALLED_VERSION}" == "${{ inputs.version }}" ]]; then
-            echo "::notice::Leo v${{ inputs.version }} restored from cache"
+          if [[ "${INSTALLED_VERSION}" == "${INPUT_VERSION}" ]]; then
+            echo "::notice::Leo v${INPUT_VERSION} restored from cache"
             echo "skip-build=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
         fi
-        
+
         # Check if binary was restored to expected location but not in PATH
-        if [[ "${{ runner.os }}" != "Windows" && -x "/usr/local/bin/leo" ]]; then
+        if [[ "${RUNNER_OS}" != "Windows" && -x "/usr/local/bin/leo" ]]; then
           INSTALLED_VERSION=$(/usr/local/bin/leo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
-          if [[ "${INSTALLED_VERSION}" == "${{ inputs.version }}" ]]; then
-            echo "::notice::Leo v${{ inputs.version }} restored from cache"
+          if [[ "${INSTALLED_VERSION}" == "${INPUT_VERSION}" ]]; then
+            echo "::notice::Leo v${INPUT_VERSION} restored from cache"
             echo "skip-build=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
         fi
-        
+
         echo "skip-build=false" >> "${GITHUB_OUTPUT}"
 
     # =========================================================================
@@ -224,45 +234,49 @@ runs:
       id: rust
       if: steps.check-leo.outputs.skip-build != 'true'
       shell: bash
+      env:
+        INPUT_RUST_VERSION: ${{ inputs.rust-version }}
       run: |
         set -euo pipefail
-        
-        echo "::group::Installing Rust ${{ inputs.rust-version }}"
-        
+
+        echo "::group::Installing Rust ${INPUT_RUST_VERSION}"
+
         # =====================================================================
         # WHY WE INLINE RUSTUP INSTEAD OF USING dtolnay/rust-toolchain:
         # -------------------------------------------------------------
         # dtolnay/rust-toolchain is excellent but has a documented risk:
         # "Any commit that is not within the history of master will eventually
         # get garbage-collected and your workflows will fail."
-        # 
+        #
         # This means pinning by SHA can break if dtolnay rebases master.
         # Since the rustup invocation is ~10 lines, we inline it for stability.
-        # 
+        #
         # Trust surface is identical: rustup.rs (official Rust project)
         # =====================================================================
-        
+
         # Download and run rustup with security flags
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
           -y \
-          --default-toolchain "${{ inputs.rust-version }}" \
+          --default-toolchain "${INPUT_RUST_VERSION}" \
           --profile minimal \
           --no-modify-path
-        
-        # Add to PATH for subsequent steps
-        echo "${HOME}/.cargo/bin" >> "${GITHUB_PATH}"
-        
-        # Source for current step
+
+        # NOTE: We intentionally do NOT add cargo to GITHUB_PATH.
+        # This action's purpose is to install Leo, not to provide a Rust environment.
+        # All internal steps that need cargo use 'source cargo/env' instead.
+        # This follows the principle of least privilege.
+
+        # Source for current step only
         source "${HOME}/.cargo/env"
-        
+
         # Verify installation
         rustc --version
         cargo --version
-        
+
         # Export version info for cache keys
         RUSTC_VERSION=$(rustc --version)
         echo "rustc-version=${RUSTC_VERSION}" >> "${GITHUB_OUTPUT}"
-        
+
         echo "::endgroup::"
 
     # =========================================================================
@@ -290,12 +304,14 @@ runs:
       id: clone
       if: steps.check-leo.outputs.skip-build != 'true'
       shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        WORKDIR: ${{ steps.config.outputs.workdir }}
       run: |
         set -euo pipefail
-        
-        VERSION="${{ inputs.version }}"
-        WORKDIR="${{ steps.config.outputs.workdir }}"
-        
+
+        VERSION="${INPUT_VERSION}"
+
         echo "::group::Cloning Leo v${VERSION} from GitHub"
         
         # =====================================================================
@@ -353,35 +369,36 @@ runs:
     - name: Run cargo audit
       if: steps.check-leo.outputs.skip-build != 'true' && inputs.run-audit == 'true'
       shell: bash
+      env:
+        WORKDIR: ${{ steps.config.outputs.workdir }}
+        INPUT_AUDIT_DENY_WARNINGS: ${{ inputs.audit-deny-warnings }}
       run: |
         set -euo pipefail
-        
-        WORKDIR="${{ steps.config.outputs.workdir }}"
-        
+
         echo "::group::Running cargo audit"
-        
+
         # Ensure cargo is available
         source "${HOME}/.cargo/env" 2>/dev/null || true
-        
+
         # Install cargo-audit (with --locked for reproducibility)
         cargo install cargo-audit --locked --quiet
-        
+
         cd "${WORKDIR}/leo"
-        
+
         # Run audit
         AUDIT_ARGS=""
-        if [[ "${{ inputs.audit-deny-warnings }}" == "true" ]]; then
+        if [[ "${INPUT_AUDIT_DENY_WARNINGS}" == "true" ]]; then
           AUDIT_ARGS="--deny warnings"
         fi
-        
+
         if ! cargo audit ${AUDIT_ARGS}; then
           echo "::warning::Security vulnerabilities found in dependencies"
-          if [[ "${{ inputs.audit-deny-warnings }}" == "true" ]]; then
+          if [[ "${INPUT_AUDIT_DENY_WARNINGS}" == "true" ]]; then
             echo "::error::Failing build due to audit-deny-warnings=true"
             exit 1
           fi
         fi
-        
+
         echo "::endgroup::"
 
     # =========================================================================
@@ -391,67 +408,71 @@ runs:
       id: build
       if: steps.check-leo.outputs.skip-build != 'true'
       shell: bash
-      run: |
+      env:
+        WORKDIR: ${{ steps.config.outputs.workdir }}
+        RUNNER_OS: ${{ runner.os }}
+      run: | # zizmor: ignore[github-env]
         set -euo pipefail
-        
-        WORKDIR="${{ steps.config.outputs.workdir }}"
-        
+
         echo "::group::Building Leo (this may take several minutes)"
-        
+
         # Ensure cargo is available
         source "${HOME}/.cargo/env" 2>/dev/null || true
-        
+
         cd "${WORKDIR}/leo"
-        
+
         # Record start time
         START_TIME=$(date +%s)
-        
+
         # =====================================================================
         # BUILD FLAGS EXPLANATION:
         # ------------------------
         # --release: Optimized build (slower compile, faster runtime)
         # --locked: Use exact versions from Cargo.lock (CRITICAL for security)
         #           Without this, cargo may silently update dependencies
-        # 
+        #
         # Environment:
         # CARGO_INCREMENTAL=0: Disable incremental compilation
         #   - Incremental artifacts don't survive cache restoration
         #   - Saves disk space in cache
         #   - More reproducible builds
         # =====================================================================
-        
+
         export CARGO_INCREMENTAL=0
-        
+
         cargo build --release --locked
-        
+
         # Record end time
         END_TIME=$(date +%s)
         DURATION=$((END_TIME - START_TIME))
         echo "Build completed in ${DURATION} seconds"
         echo "duration=${DURATION}" >> "${GITHUB_OUTPUT}"
-        
+
         # Verify binary exists
         if [[ ! -f "target/release/leo" ]]; then
           echo "::error::Build completed but leo binary not found"
           ls -la target/release/ || true
           exit 1
         fi
-        
+
         echo "::endgroup::"
-        
+
         # Install binary
         echo "::group::Installing Leo binary"
-        
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
+
+        if [[ "${RUNNER_OS}" == "Windows" ]]; then
           mkdir -p "${HOME}/.local/bin"
           cp target/release/leo.exe "${HOME}/.local/bin/leo.exe"
+          # GITHUB_PATH write required on Windows - no pre-existing user-writable PATH location.
+          # This is safe: the path is a fixed literal (${HOME}/.local/bin), not attacker-controlled.
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
           echo "Installed to: ${HOME}/.local/bin/leo.exe"
         else
+          # On Linux/macOS, /usr/local/bin is already in PATH - no GITHUB_PATH modification needed.
           sudo install -m 755 target/release/leo /usr/local/bin/leo
           echo "Installed to: /usr/local/bin/leo"
         fi
-        
+
         echo "::endgroup::"
 
     # =========================================================================
@@ -460,34 +481,37 @@ runs:
     - name: Verify Leo installation
       id: verify
       shell: bash
+      env:
+        RUNNER_OS: ${{ runner.os }}
+        INPUT_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        
+
         echo "::group::Verifying Leo installation"
-        
+
         # Ensure PATH is updated
-        if [[ "${{ runner.os }}" == "Windows" ]]; then
+        if [[ "${RUNNER_OS}" == "Windows" ]]; then
           export PATH="${HOME}/.local/bin:${PATH}"
         fi
-        
+
         # Verify leo is available
         if ! command -v leo &>/dev/null; then
           echo "::error::Leo binary not found in PATH"
           echo "PATH: ${PATH}"
           exit 1
         fi
-        
+
         # Get and verify version
         leo --version
         INSTALLED_VERSION=$(leo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-        
-        if [[ "${INSTALLED_VERSION}" != "${{ inputs.version }}" ]]; then
-          echo "::warning::Version mismatch - expected ${{ inputs.version }}, got ${INSTALLED_VERSION}"
+
+        if [[ "${INSTALLED_VERSION}" != "${INPUT_VERSION}" ]]; then
+          echo "::warning::Version mismatch - expected ${INPUT_VERSION}, got ${INSTALLED_VERSION}"
         fi
-        
+
         echo "version=${INSTALLED_VERSION}" >> "${GITHUB_OUTPUT}"
         echo "✓ Leo v${INSTALLED_VERSION} installed successfully"
-        
+
         echo "::endgroup::"
 
     # =========================================================================
@@ -496,10 +520,13 @@ runs:
     - name: Determine if cache should be saved
       id: cache-save-decision
       shell: bash
+      env:
+        INPUT_CACHE_SAVE: ${{ inputs.cache-save }}
+        SKIP_BUILD: ${{ steps.check-leo.outputs.skip-build }}
       run: |
         SAVE_CACHE="false"
-        
-        case "${{ inputs.cache-save }}" in
+
+        case "${INPUT_CACHE_SAVE}" in
           always)
             SAVE_CACHE="true"
             ;;
@@ -511,12 +538,12 @@ runs:
             SAVE_CACHE="false"
             ;;
         esac
-        
+
         # Don't save if we restored from cache (nothing new to save)
-        if [[ "${{ steps.check-leo.outputs.skip-build }}" == "true" ]]; then
+        if [[ "${SKIP_BUILD}" == "true" ]]; then
           SAVE_CACHE="false"
         fi
-        
+
         echo "save-cache=${SAVE_CACHE}" >> "${GITHUB_OUTPUT}"
 
     - name: Save Leo binary cache
@@ -543,8 +570,9 @@ runs:
     - name: Cleanup build directory
       if: always() && steps.check-leo.outputs.skip-build != 'true'
       shell: bash
+      env:
+        WORKDIR: ${{ steps.config.outputs.workdir }}
       run: |
-        WORKDIR="${{ steps.config.outputs.workdir }}"
         if [[ -d "${WORKDIR}" ]]; then
           rm -rf "${WORKDIR}"
           echo "Cleaned up build directory: ${WORKDIR}"
