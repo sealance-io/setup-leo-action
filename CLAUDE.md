@@ -14,7 +14,7 @@ This is a **security-hardened GitHub Action** for installing the [Leo](https://g
 - Two separate caches: binary cache (version+OS+arch) and cargo registry cache (version+rust+OS+arch)
 - Flow: validate inputs → restore binary cache → (if miss) install Rust → restore cargo cache → clone Leo tag → optional cargo audit → build with `--locked` → install binary → save caches → cleanup
 
-See `ARCHITECTURE.md` for detailed design diagrams and rationale. See `THREAT_MODEL.md` for security analysis and trust boundaries.
+See `docs/ARCHITECTURE.md` for detailed design diagrams and rationale. See `docs/THREAT_MODEL.md` for security analysis and trust boundaries.
 
 ## Development Commands
 
@@ -94,5 +94,5 @@ act push -j test-linux
 - `scripts/verify-release.sh` - Pre-update verification script
 - `examples/` - Sample workflow configurations for users
 - `docs/ACT_TESTING_GUIDE.md` - Comprehensive guide for local testing with act
-- `THREAT_MODEL.md` - Security analysis and trust assumptions
-- `ARCHITECTURE.md` - Design decisions and flow diagrams
+- `docs/THREAT_MODEL.md` - Security analysis and trust assumptions
+- `docs/ARCHITECTURE.md` - Design decisions and flow diagrams

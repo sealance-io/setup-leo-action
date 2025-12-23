@@ -4,7 +4,7 @@ A **security-hardened** GitHub Action for installing the [Leo](https://github.co
 
 ## Why Source-Only?
 
-This action deliberately **does not support pre-built binaries** because ProvableHQ's releases lack cryptographic verification. See [THREAT_MODEL.md](THREAT_MODEL.md) for the detailed threat model.
+This action deliberately **does not support pre-built binaries** because ProvableHQ's releases lack cryptographic verification. See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the detailed threat model.
 
 | Security Property | Pre-built Binary | Source Build (This Action) |
 |-------------------|------------------|---------------------------|
@@ -275,7 +275,7 @@ This action can support verified binary downloads when ProvableHQ implements **a
 - [ ] SLSA provenance attestations (Level 2+)
 - [ ] GitHub artifact attestations
 
-See [THREAT_MODEL.md](THREAT_MODEL.md) for the complete threat model and verification criteria.
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the complete threat model and verification criteria.
 
 ---
 

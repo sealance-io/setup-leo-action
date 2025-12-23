@@ -29,7 +29,7 @@
 # FUTURE-PROOFING:
 # ----------------
 # If ProvableHQ adopts proper release signing (GPG, Sigstore, SLSA), this action
-# can be extended to support verified binary downloads. See THREAT_MODEL.md for the
+# can be extended to support verified binary downloads. See docs/THREAT_MODEL.md for the
 # criteria that would enable this.
 #
 # CACHING STRATEGY:
@@ -357,7 +357,7 @@ runs:
         else
           echo "⚠ Tag is NOT GPG signed"
           echo "  This is expected for ProvableHQ releases"
-          echo "  See THREAT_MODEL.md for implications"
+          echo "  See docs/THREAT_MODEL.md for implications"
           echo "tag-signed=false" >> "${GITHUB_OUTPUT}"
         fi
         
