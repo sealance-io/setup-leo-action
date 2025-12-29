@@ -191,7 +191,7 @@ runs:
       if: inputs.enable-cache == 'true'
       # Pin by SHA - this is GitHub's official action
       # SHA for actions/cache@v4.2.0 - verify at https://github.com/actions/cache/releases
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: |
           ${{ runner.os == 'Windows' && format('{0}/.local/bin/leo.exe', runner.temp) || '/usr/local/bin/leo' }}
@@ -285,7 +285,7 @@ runs:
     - name: Restore cargo registry cache
       id: cache-cargo-registry
       if: steps.check-leo.outputs.skip-build != 'true' && inputs.enable-cache == 'true'
-      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/restore@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: |
           ~/.cargo/registry/index/
@@ -548,7 +548,7 @@ runs:
 
     - name: Save Leo binary cache
       if: inputs.enable-cache == 'true' && steps.cache-save-decision.outputs.save-cache == 'true' && steps.cache-leo-binary.outputs.cache-hit != 'true'
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: |
           ${{ runner.os == 'Windows' && format('{0}/.local/bin/leo.exe', runner.temp) || '/usr/local/bin/leo' }}
@@ -556,7 +556,7 @@ runs:
 
     - name: Save cargo registry cache
       if: inputs.enable-cache == 'true' && steps.cache-save-decision.outputs.save-cache == 'true' && steps.cache-cargo-registry.outputs.cache-hit != 'true'
-      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache/save@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
       with:
         path: |
           ~/.cargo/registry/index/
