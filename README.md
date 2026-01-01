@@ -119,7 +119,7 @@ jobs:
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
     version: '3.4.0'
-    rust-version: '1.83.0'  # Pin specific Rust version
+    rust-version: '1.90.0'  # Pin specific Rust version
 ```
 
 ## Inputs
