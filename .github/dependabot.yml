@@ -53,6 +53,5 @@ updates:
       - "dependencies"
       - "github-actions"
     
-    # Reviewers (customize for your team)
-    # reviewers:
-    #   - "sealance-io/security-team"
+    reviewers:
+      - "@sealance-io/sealance-engineers"
