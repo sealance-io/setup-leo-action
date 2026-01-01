@@ -8,7 +8,7 @@ This is a **security-hardened GitHub Action** for installing the [Leo](https://g
 
 ## Architecture
 
-**Composite Action** (`action.yml`) - A single-file GitHub Action written entirely in bash (~550 lines):
+**Composite Action** (`action.yml`) - A single-file GitHub Action written entirely in bash (~580 lines):
 - Uses only `actions/cache` (SHA-pinned) as external dependency
 - Inlines rustup instead of using third-party actions like `dtolnay/rust-toolchain`
 - Two separate caches: binary cache (version+OS+arch) and cargo registry cache (version+rust+OS+arch)
@@ -35,10 +35,20 @@ The CI workflow (`.github/workflows/test.yml`) tests:
 - Linux (ubuntu-24.04)
 - macOS ARM64 (macos-14)
 - macOS x86 (macos-13)
-- Multiple Rust versions (stable, 1.83.0, 1.80.0)
+- Multiple Rust versions (stable, 1.90.0, 1.88.0)
 - Cache restore behavior
+- Security analysis with [zizmor](https://docs.zizmor.sh)
 
 CI runs on: push to main (tests + cache save), pull requests (tests only), weekly schedule (keeps caches fresh).
+
+The `lint` job runs [zizmor](https://docs.zizmor.sh) security analysis on all workflow files. Findings at medium severity or above will fail the build. Use `# zizmor: ignore[rule-name]` comments to suppress false positives (see action.yml line 414 for an example).
+
+### Release workflow
+The release workflow (`.github/workflows/release.yml`) automatically creates GitHub Releases when semver tags are pushed:
+```bash
+git tag -a v1.0.0 -m "Initial release"
+git push origin v1.0.0
+```
 
 ## Key Design Decisions
 
@@ -96,3 +106,8 @@ act push -j test-linux
 - `docs/ACT_TESTING_GUIDE.md` - Comprehensive guide for local testing with act
 - `docs/THREAT_MODEL.md` - Security analysis and trust assumptions
 - `docs/ARCHITECTURE.md` - Design decisions and flow diagrams
+- `docs/RELEASE.md` - Release process and versioning strategy
+- `.github/workflows/test.yml` - CI workflow (tests + lint + zizmor)
+- `.github/workflows/release.yml` - Automated release on tag push
+- `.github/dependabot.yml` - Weekly updates for GitHub Actions dependencies
+- `.github/CODEOWNERS` - Maintainer assignments for PR reviews
