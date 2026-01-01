@@ -1,0 +1,71 @@
+# =============================================================================
+# Release Workflow for setup-leo-action
+# =============================================================================
+#
+# Creates a GitHub Release when a semver tag is pushed.
+# Uses immutable releases (no floating major tags like v1).
+#
+# Usage:
+#   git tag -a v1.0.0 -m "Initial release"
+#   git push origin v1.0.0
+#
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'      # Stable: v1.2.3
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'    # Pre-release: v1.2.3-beta.1
+
+permissions: {}  # No workflow-level permissions
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required: create releases
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+
+          # Determine if pre-release (contains hyphen: v1.0.0-beta.1)
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+            LATEST_FLAG="--latest=false"
+            echo "Creating pre-release: $TAG"
+          else
+            PRERELEASE_FLAG=""
+            LATEST_FLAG="--latest"
+            echo "Creating stable release: $TAG"
+          fi
+
+          # Create release with auto-generated notes + installation instructions
+          gh release create "$TAG" \
+            --generate-notes \
+            --notes "## Installation
+
+          \`\`\`yaml
+          - uses: sealance-io/setup-leo-action@${TAG}
+          \`\`\`
+
+          Or pin to this commit SHA for maximum security:
+          \`\`\`yaml
+          - uses: sealance-io/setup-leo-action@${GITHUB_SHA}
+          \`\`\`
+
+          ---
+          " \
+            $PRERELEASE_FLAG \
+            $LATEST_FLAG
