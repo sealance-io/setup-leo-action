@@ -57,7 +57,7 @@ inputs:
     required: true
   
   rust-version:
-    description: 'Rust toolchain version (e.g., "1.83.0" or "stable")'
+    description: 'Rust toolchain version (e.g., "1.90.0" or "stable")'
     required: false
     default: 'stable'
   
