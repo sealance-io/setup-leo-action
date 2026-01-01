@@ -210,7 +210,7 @@ jobs:
           leo --version | grep -q "${EXPECTED_VERSION}" || echo "::warning::Version mismatch"
 
   # ===========================================================================
-  # Shellcheck
+  # Lint and Security Analysis
   # ===========================================================================
   lint:
     name: Lint
@@ -231,11 +231,32 @@ jobs:
           fi
 
       - name: Lint scripts
-        run: |
-          shellcheck scripts/*.sh || true  # Non-blocking for now
+        run: shellcheck scripts/*.sh
 
       - name: Validate action.yml
         run: |
           # Basic YAML validation
           python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
-          echo "✓ action.yml is valid YAML"
+          echo "action.yml is valid YAML"
+
+      - name: Run zizmor security analysis
+        env:
+          ZIZMOR_VERSION: "1.19.0"
+        run: |
+          # Detect architecture
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64)  ZIZMOR_ARCH="x86_64-unknown-linux-gnu" ;;
+            aarch64) ZIZMOR_ARCH="aarch64-unknown-linux-gnu" ;;
+            arm64)   ZIZMOR_ARCH="aarch64-unknown-linux-gnu" ;;
+            *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
+          esac
+
+          # Download and install zizmor binary
+          curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-${ZIZMOR_ARCH}.tar.gz" \
+            -o zizmor.tar.gz
+          tar -xzf zizmor.tar.gz
+          chmod +x zizmor
+
+          # Run with medium severity minimum
+          ./zizmor --min-severity medium .github/workflows/
