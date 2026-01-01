@@ -1,0 +1,7 @@
+# Default owner for everything
+* @sealance-io/sealance-engineers
+
+# Security-critical files (explicit for visibility)
+action.yml @sealance-io/sealance-engineers
+.github/workflows/ @sealance-io/sealance-engineers
+scripts/ @sealance-io/sealance-engineers
