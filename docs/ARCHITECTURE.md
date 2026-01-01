@@ -210,7 +210,7 @@ Keeping the action small and auditable:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| action.yml | ~400 | Main action logic |
+| action.yml | ~580 | Main action logic |
 | README.md | ~400 | Documentation |
 | THREAT_MODEL.md | ~350 | Threat model |
 | ARCHITECTURE.md | ~200 | This file |

@@ -45,7 +45,7 @@
 
 name: 'Setup Leo Compiler (Source Build)'
 description: 'Install the Leo programming language compiler by building from source with full security hardening'
-author: 'Your Organization'
+author: 'sealance-io'
 
 branding:
   icon: 'shield'
