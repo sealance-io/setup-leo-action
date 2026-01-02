@@ -34,7 +34,7 @@ shellcheck scripts/*.sh
 The CI workflow (`.github/workflows/test.yml`) tests:
 - Linux (ubuntu-24.04)
 - macOS ARM64 (macos-14)
-- macOS x86 (macos-13)
+- macOS x86 (macos-15)
 - Multiple Rust versions (stable, 1.90.0, 1.88.0)
 - Cache restore behavior
 - Security analysis with [zizmor](https://docs.zizmor.sh)

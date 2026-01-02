@@ -107,7 +107,7 @@ jobs:
   # ===========================================================================
   test-macos-x86:
     name: Test (macOS x86)
-    runs-on: macos-13
+    runs-on: macos-15
     
     steps:
       - name: Checkout
