@@ -45,7 +45,7 @@ env:
   # VERSION PINNING
   # Update these when upgrading Leo - use scripts/verify-checksums.sh
   # ==========================================================================
-  LEO_VERSION: "3.4.0"
+  LEO_VERSION: "3.5.0"
   RUST_VERSION: "stable"  # Or pin: "1.90.0"
 
 jobs:

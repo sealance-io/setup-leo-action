@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  LEO_VERSION: "3.4.0"  # Version to test with
+  LEO_VERSION: "3.5.0"  # Version to test with
 
 jobs:
   # ===========================================================================
@@ -173,8 +173,11 @@ jobs:
       matrix:
         include:
           # Latest release - also test with stable Rust
-          - leo: "3.4.0"
+          - leo: "3.5.0"
             rust: "stable"
+          # v3.5.0 requires Rust 1.92.0
+          - leo: "3.5.0"
+            rust: "1.92.0"
           # v3.4.0 requires Rust 1.90.0
           - leo: "3.4.0"
             rust: "1.90.0"
