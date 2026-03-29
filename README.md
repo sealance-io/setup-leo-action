@@ -20,7 +20,7 @@ This action deliberately **does not support pre-built binaries** because Provabl
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '3.4.0'
+    version: '3.5.0'
 ```
 
 That's it. The action handles Rust installation, caching, and building.
@@ -41,7 +41,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '3.4.0'
+          version: '3.5.0'
       
       - run: leo build
       - run: leo test
@@ -72,7 +72,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '3.4.0'
+          version: '3.5.0'
           # Save cache only on main branch to avoid PR cache pollution
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
       
@@ -84,7 +84,7 @@ jobs:
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '3.4.0'
+    version: '3.5.0'
     run-audit: 'true'
     audit-deny-warnings: 'true'  # Fail on any vulnerability
 ```
@@ -108,7 +108,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '3.4.0'
+          version: '3.5.0'
       
       - run: leo build
 ```
@@ -118,15 +118,15 @@ jobs:
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '3.4.0'
-    rust-version: '1.90.0'  # Pin specific Rust version
+    version: '3.5.0'
+    rust-version: '1.92.0'  # Pin specific Rust version
 ```
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `version` | **Yes** | - | Leo version without `v` prefix (e.g., `3.4.0`) |
+| `version` | **Yes** | - | Leo version without `v` prefix (e.g., `3.5.0`) |
 | `rust-version` | No | `stable` | Rust toolchain version |
 | `enable-cache` | No | `true` | Enable caching of Leo binary and cargo registry |
 | `cache-save` | No | `on-success` | When to save cache: `always`, `on-success`, `never` |
@@ -153,7 +153,7 @@ This action uses **two separate caches** with different invalidation patterns:
 
 ```
 Key: leo-binary-v{version}-{os}-{arch}
-Example: leo-binary-v3.4.0-linux-x86_64
+Example: leo-binary-v3.5.0-linux-x86_64
 ```
 
 - **Contents**: The compiled `leo` binary only
@@ -165,7 +165,7 @@ Example: leo-binary-v3.4.0-linux-x86_64
 
 ```
 Key: leo-cargo-v{version}-{rust-version}-{os}-{arch}
-Example: leo-cargo-v3.4.0-stable-linux-x86_64
+Example: leo-cargo-v3.5.0-stable-linux-x86_64
 ```
 
 - **Contents**: `~/.cargo/registry/index/`, `~/.cargo/registry/cache/`, `~/.cargo/git/db/`
@@ -185,8 +185,8 @@ Example: leo-cargo-v3.4.0-stable-linux-x86_64
 
 ```
 main branch
-├── Creates: leo-binary-v3.4.0-linux-x86_64
-├── Creates: leo-cargo-v3.4.0-stable-linux-x86_64
+├── Creates: leo-binary-v3.5.0-linux-x86_64
+├── Creates: leo-cargo-v3.5.0-stable-linux-x86_64
 │
 feature-branch (branched from main)
 ├── CAN restore: caches from main ✅
@@ -341,7 +341,7 @@ Feature branches can only access caches from:
 The git tag doesn't match the expected version.
 
 **Solutions**:
-1. Verify the version exists: `git ls-remote --tags https://github.com/ProvableHQ/leo | grep v3.4.0`
+1. Verify the version exists: `git ls-remote --tags https://github.com/ProvableHQ/leo | grep v3.5.0`
 2. Check for typos in the version input
 
 ## cargo audit failures
