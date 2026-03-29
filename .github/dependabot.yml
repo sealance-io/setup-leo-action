@@ -29,16 +29,29 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
+      # Use cron instead of interval: "daily" because GitHub's "daily"
+      # schedule only runs on weekdays. This runs every day at 09:00 UTC.
+      interval: "cron"
+      cronjob: "0 9 * * *"
       timezone: "UTC"
+
+    # Delay newly released action versions for 7 days before opening PRs.
+    # This reduces exposure to compromised upstream releases, while still
+    # allowing Dependabot security updates to bypass the cooldown.
+    cooldown:
+      default-days: 7
+      include:
+        - "*"
     
     # Group all action updates into single PR
     groups:
       github-actions:
         patterns:
           - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
     
     # Limit open PRs
     open-pull-requests-limit: 5
