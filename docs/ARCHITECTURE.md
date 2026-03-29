@@ -59,6 +59,18 @@ We maintain two caches with different invalidation patterns:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Cargo Cache Restore-Keys Fallback
+
+The cargo registry cache uses a 3-tier restore-keys cascade for partial matches:
+
+```
+leo-cargo-v{version}-{rust-version}-{os}-        # same version+rust, any arch
+leo-cargo-v{version}-{rust-version}-              # same version+rust
+leo-cargo-v{version}-                             # same Leo version only
+```
+
+This allows new Rust versions or platforms to warm-start from a related cache rather than starting cold.
+
 ### Why Not Cache target/?
 
 The `target/` directory:
@@ -80,13 +92,34 @@ We considered `Swatinem/rust-cache` but decided against it:
 ```
 setup-leo-action
 │
-├── actions/cache/restore@SHA  (GitHub official)
-├── actions/cache/save@SHA     (GitHub official)
+├── actions/cache/restore@668228...  (GitHub official, v5.0.4)
+├── actions/cache/save@668228...     (GitHub official, v5.0.4)
 │
 └── External downloads:
     ├── https://sh.rustup.rs   (Official Rust project)
     └── github.com/ProvableHQ/leo (git clone)
 ```
+
+## Inputs
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `version` | Yes | — | Leo version (e.g., `3.4.0`) |
+| `rust-version` | No | `stable` | Rust toolchain version |
+| `enable-cache` | No | `true` | Enable binary + cargo caching |
+| `cache-save` | No | `on-success` | When to save: `always`, `on-success`, `never` |
+| `run-audit` | No | `true` | Run cargo audit for vulnerabilities |
+| `audit-deny-warnings` | No | `false` | Fail on audit warnings (not just errors) |
+| `working-directory` | No | `$RUNNER_TEMP/leo-build` | Directory to clone and build Leo |
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `leo-version` | Installed Leo version string |
+| `cache-hit-binary` | Whether binary was restored from cache |
+| `cache-hit-cargo` | Whether cargo registry was restored from cache |
+| `build-time-seconds` | Build duration (0 if cached) |
 
 ### Why Not dtolnay/rust-toolchain?
 
@@ -100,72 +133,80 @@ This means:
 
 ## Flow Diagram
 
+Step numbers below match the `# STEP N:` headers in `action.yml`:
+
 ```
-┌─────────────────┐
-│  Start Action   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐     ┌─────────────────┐
-│ Validate Inputs │────▶│ Generate Cache  │
-│ & Detect OS     │     │     Keys        │
-└────────┬────────┘     └────────┬────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐
-│ Restore Binary  │────▶│ Binary in Cache?│
-│    Cache        │     └────────┬────────┘
-└─────────────────┘              │
-                          ┌──────┴──────┐
-                          │             │
-                         YES           NO
-                          │             │
-                          ▼             ▼
-                   ┌──────────┐  ┌──────────────┐
-                   │   Done   │  │ Install Rust │
-                   └──────────┘  └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │ Restore Cargo│
-                                 │    Cache     │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │  Clone Leo   │
-                                 │  (git tag)   │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │ cargo audit  │
-                                 │  (optional)  │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │ cargo build  │
-                                 │ --release    │
-                                 │ --locked     │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │   Install    │
-                                 │   Binary     │
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │ Save Caches  │
-                                 │ (conditional)│
-                                 └──────┬───────┘
-                                        │
-                                        ▼
-                                 ┌──────────────┐
-                                 │   Cleanup    │
-                                 └──────────────┘
+┌──────────────────────────────┐
+│ Step 1: Validate Inputs &    │
+│   Configure Environment      │
+│   (version, OS, cache keys)  │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│ Step 2: Restore Binary Cache │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│ Check if Leo Already         │
+│ Available (version match?)   │
+│ (unnumbered; between 2 & 3)  │
+└──────────────┬───────────────┘
+               │
+        ┌──────┴──────┐
+     skip=true     skip=false
+        │              │
+        │              ▼
+        │   ┌──────────────────────────────┐
+        │   │ Step 3: Install Rust         │
+        │   │   Toolchain (rustup.rs)      │
+        │   └──────────────┬───────────────┘
+        │                  │
+        │                  ▼
+        │   ┌──────────────────────────────┐
+        │   │ Step 4: Restore Cargo        │
+        │   │   Registry Cache             │
+        │   │   (with restore-keys)        │
+        │   └──────────────┬───────────────┘
+        │                  │
+        │                  ▼
+        │   ┌──────────────────────────────┐
+        │   │ Step 5: Clone Leo (git tag)  │
+        │   │   + GPG check (informational)│
+        │   └──────────────┬───────────────┘
+        │                  │
+        │                  ▼
+        │   ┌──────────────────────────────┐
+        │   │ Step 6: cargo audit          │
+        │   │   (optional, default on)     │
+        │   └──────────────┬───────────────┘
+        │                  │
+        │                  ▼
+        │   ┌──────────────────────────────┐
+        │   │ Step 7: cargo build --release│
+        │   │   --locked + Install Binary  │
+        │   └──────────────┬───────────────┘
+        │                  │
+        ├──────────────────┘
+        │
+        ▼
+┌──────────────────────────────┐
+│ Step 8: Verify Installation  │
+│   (version check, PATH)      │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│ Step 9: Save Caches          │
+│   (conditional on input &    │
+│    cache-hit status)         │
+└──────────────┬───────────────┘
+               │
+               ▼
+┌──────────────────────────────┐
+│ Step 10: Cleanup Build Dir   │
+└──────────────────────────────┘
 ```
 
 ## Future: Binary Download Support
@@ -210,8 +251,10 @@ Keeping the action small and auditable:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| action.yml | ~580 | Main action logic |
-| README.md | ~400 | Documentation |
-| THREAT_MODEL.md | ~350 | Threat model |
-| ARCHITECTURE.md | ~200 | This file |
-| **Total** | **~1350** | Fully auditable |
+| action.yml | ~580 | Main action logic (bash + YAML) |
+| README.md | ~380 | User documentation |
+| THREAT_MODEL.md | ~340 | Security analysis |
+| ARCHITECTURE.md | ~260 | This file |
+| RELEASE.md | ~120 | Release process |
+| ACT_TESTING_GUIDE.md | ~685 | Local testing guide |
+| **Total** | **~2365** | Fully auditable |

@@ -292,11 +292,12 @@ This action repository itself follows security best practices:
 
 ## Practices Implemented
 
-- [ ] **All dependencies SHA-pinned**: actions/cache pinned to specific commit
-- [ ] **Minimal permissions**: Action requires no special permissions
-- [ ] **No secrets**: Action doesn't use or expose secrets
-- [ ] **Auditable code**: ~400 lines of bash, fully readable
-- [ ] **No external downloads in action code**: Only git clone and cargo build
+- [x] **All dependencies SHA-pinned**: actions/cache pinned to specific commit (v5.0.4)
+- [x] **Minimal permissions**: Action requires no special permissions
+- [x] **No secrets**: Action doesn't use or expose secrets
+- [x] **Auditable code**: ~580 lines of commented bash/YAML, fully readable
+- [x] **No pre-built binary downloads**: Leo built from source; runtime downloads limited to rustup.rs, crates.io deps (via Cargo.lock), and cargo-audit (when `run-audit=true`)
+- [x] **Workflow security linting**: zizmor analysis at medium severity in CI
 - [ ] **Branch protection**: (Configure in your fork)
 - [ ] **Signed commits**: (Configure in your fork)
 
@@ -325,6 +326,7 @@ For maintaining this action, enable:
 
 | Date | Change |
 |------|--------|
+| 2026-03-30 | Sync with codebase: fix checklist, add zizmor, update line count |
 | 2025-12-22 | Initial security documentation |
 
 ---

@@ -190,7 +190,7 @@ runs:
       id: cache-leo-binary
       if: inputs.enable-cache == 'true'
       # Pin by SHA - this is GitHub's official action
-      # SHA for actions/cache@v4.2.0 - verify at https://github.com/actions/cache/releases
+      # Verify at https://github.com/actions/cache/releases
       uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: |
