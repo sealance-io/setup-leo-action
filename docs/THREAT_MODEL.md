@@ -85,7 +85,7 @@ As of April 2026, including Leo `v4.0.0` released on March 31, 2026, ProvableHQ'
 ProvableHQ publishes SHA256 checksums alongside their binaries:
 
 ```text
-95bcda063c8f0aba...  leo-master-x86_64-unknown-linux-gnu.zip
+95bcda063c8f0aba...  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
 ```
 
 This checksum **provides no security** against a compromised release pipeline because:
@@ -253,7 +253,7 @@ cosign verify-blob \
   --signature leo-v4.0.0.sig \
   --certificate-identity release@provablehq.com \
   --certificate-oidc-issuer https://accounts.google.com \
-  leo-master-x86_64-unknown-linux-gnu.zip
+  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
 ```
 
 ## Option 3: SLSA Provenance Attestations
@@ -269,7 +269,7 @@ slsa-verifier verify-artifact \
   --provenance-path leo-v4.0.0.intoto.jsonl \
   --source-uri github.com/ProvableHQ/leo \
   --source-tag v4.0.0 \
-  leo-master-x86_64-unknown-linux-gnu.zip
+  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
 ```
 
 ## Option 4: GitHub Artifact Attestations
@@ -280,7 +280,7 @@ slsa-verifier verify-artifact \
 
 **Verification method**:
 ```bash
-gh attestation verify leo-master-x86_64-unknown-linux-gnu.zip \
+gh attestation verify leo-v4.0.0-x86_64-unknown-linux-gnu.zip \
   --owner ProvableHQ
 ```
 
