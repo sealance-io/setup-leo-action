@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  LEO_VERSION: "3.5.0"  # Version to test with
+  LEO_VERSION: "4.0.0"  # Latest version to test with
 
 jobs:
   # ===========================================================================
@@ -76,6 +76,22 @@ jobs:
           cd test-project
           leo new hello_world
           cd hello_world
+          leo build
+          leo test
+
+      - name: Test with sample library (Leo v4+)
+        run: |
+          LEO_MAJOR=$(leo --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 | cut -d. -f1)
+          if [[ "${LEO_MAJOR}" -lt 4 ]]; then
+            echo "Skipping v4-only library smoke test for Leo ${LEO_MAJOR}.x"
+            exit 0
+          fi
+
+          mkdir -p test-library
+          cd test-library
+          leo new --library math_utils
+          cd math_utils
+          test -f src/lib.leo
           leo build
 
   # ===========================================================================
@@ -173,8 +189,11 @@ jobs:
       matrix:
         include:
           # Latest release - also test with stable Rust
-          - leo: "3.5.0"
+          - leo: "4.0.0"
             rust: "stable"
+          # v4.0.0 requires Rust 1.94.1
+          - leo: "4.0.0"
+            rust: "1.94.1"
           # v3.5.0 requires Rust 1.92.0
           - leo: "3.5.0"
             rust: "1.92.0"

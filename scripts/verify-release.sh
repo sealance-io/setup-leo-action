@@ -6,7 +6,7 @@
 # Run this before updating the action to use a new Leo version.
 #
 # Usage:
-#   ./scripts/verify-release.sh 3.4.0
+#   ./scripts/verify-release.sh 4.0.0
 #
 # This script will:
 # 1. Check that the version exists as a git tag
@@ -23,7 +23,7 @@ VERSION="${1:-}"
 
 if [[ -z "${VERSION}" ]]; then
     echo "Usage: $0 <version>"
-    echo "Example: $0 3.4.0"
+    echo "Example: $0 4.0.0"
     exit 1
 fi
 
@@ -114,9 +114,76 @@ fi
 echo ""
 
 # -----------------------------------------------------------------------------
-# Check 6: Cargo Audit
+# Check 6: Rust Toolchain
 # -----------------------------------------------------------------------------
-echo "--- Check 6: Security Audit ---"
+echo "--- Check 6: Rust Toolchain ---"
+RUST_TOOLCHAIN="unknown"
+if [[ -f "rust-toolchain.toml" ]]; then
+    RUST_TOOLCHAIN=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml | head -1)
+    if [[ -n "${RUST_TOOLCHAIN}" ]]; then
+        echo "✓ rust-toolchain.toml found"
+        echo "  Required Rust: ${RUST_TOOLCHAIN}"
+    else
+        echo "⚠ rust-toolchain.toml found but channel could not be parsed"
+    fi
+else
+    echo "⚠ rust-toolchain.toml not found"
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# Check 7: Build Layout
+# -----------------------------------------------------------------------------
+echo "--- Check 7: Build Layout ---"
+BUILD_LAYOUT="legacy-root"
+BUILD_PACKAGE="(workspace root)"
+
+if [[ -f "crates/leo/Cargo.toml" ]]; then
+    BUILD_PACKAGE=$(awk '
+        BEGIN { in_package = 0 }
+        /^\[package\]/ { in_package = 1; next }
+        /^\[/ { if (in_package) exit }
+        in_package && $0 ~ /^name = "/ {
+            sub(/^name = "/, "", $0)
+            sub(/"$/, "", $0)
+            print
+            exit
+        }
+    ' "crates/leo/Cargo.toml")
+
+    if [[ -z "${BUILD_PACKAGE}" ]]; then
+        echo "✗ crates/leo/Cargo.toml does not define a package name"
+        exit 1
+    fi
+
+    if awk '
+        BEGIN { in_bin = 0; found = 0 }
+        /^\[\[bin\]\]/ { in_bin = 1; next }
+        /^\[/ { in_bin = 0 }
+        in_bin && $0 ~ /^name = "leo"$/ { found = 1 }
+        END { exit(found ? 0 : 1) }
+    ' "crates/leo/Cargo.toml"; then
+        BUILD_LAYOUT="crate-package"
+        echo "✓ crates/leo layout detected"
+        echo "  Package: ${BUILD_PACKAGE}"
+        echo "  Binary target: leo"
+    else
+        echo "✗ crates/leo/Cargo.toml exists but no leo binary target was found"
+        exit 1
+    fi
+elif [[ -f "Cargo.toml" ]]; then
+    echo "✓ Legacy root build layout detected"
+    echo "  Package: ${BUILD_PACKAGE}"
+else
+    echo "✗ Cargo.toml NOT FOUND"
+    exit 1
+fi
+echo ""
+
+# -----------------------------------------------------------------------------
+# Check 8: Cargo Audit
+# -----------------------------------------------------------------------------
+echo "--- Check 8: Security Audit ---"
 if command -v cargo &>/dev/null; then
     if ! command -v cargo-audit &>/dev/null; then
         echo "Installing cargo-audit..."
@@ -151,6 +218,8 @@ echo "| Clone successful | ✓ |"
 echo "| GPG signed | ${SIGNED} |"
 echo "| SLSA attestation | ${SLSA} |"
 echo "| Cargo.lock exists | ✓ |"
+echo "| Rust toolchain | ${RUST_TOOLCHAIN} |"
+echo "| Build layout | ${BUILD_LAYOUT} |"
 echo "| Security audit | ${AUDIT} |"
 echo ""
 echo "Commit SHA: ${COMMIT_SHA}"

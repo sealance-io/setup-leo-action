@@ -43,10 +43,10 @@ permissions:
 env:
   # ==========================================================================
   # VERSION PINNING
-  # Update these when upgrading Leo - use scripts/verify-checksums.sh
+  # Update these when upgrading Leo - use scripts/verify-release.sh
   # ==========================================================================
-  LEO_VERSION: "3.5.0"
-  RUST_VERSION: "stable"  # Or pin: "1.90.0"
+  LEO_VERSION: "4.0.0"
+  RUST_VERSION: "1.94.1"  # Leo v4.0.0 minimum
 
 jobs:
   # ==========================================================================
@@ -111,7 +111,7 @@ jobs:
             os: macos-14
           
           - name: macOS x64
-            os: macos-13
+            os: macos-15
           
           # Uncomment for Windows support
           # - name: Windows x64

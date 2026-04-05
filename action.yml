@@ -53,11 +53,11 @@ branding:
 
 inputs:
   version:
-    description: 'Leo version to install (without v prefix, e.g., "3.5.0")'
+    description: 'Leo version to install (without v prefix, e.g., "4.0.0")'
     required: true
   
   rust-version:
-    description: 'Rust toolchain version (e.g., "1.90.0" or "stable")'
+    description: 'Rust toolchain version (e.g., "1.94.1" or "stable")'
     required: false
     default: 'stable'
   
@@ -133,7 +133,7 @@ runs:
         VERSION="${INPUT_VERSION}"
         if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
           echo "::error::Invalid version format: ${VERSION}"
-          echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 3.5.0 or 3.5.0-beta.1)"
+          echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 4.0.0 or 4.0.0-beta.1)"
           exit 1
         fi
 
@@ -203,6 +203,7 @@ runs:
       env:
         INPUT_VERSION: ${{ inputs.version }}
         RUNNER_OS: ${{ runner.os }}
+        RUNNER_TEMP: ${{ runner.temp }}
       run: |
         set -euo pipefail
 
@@ -218,6 +219,15 @@ runs:
         # Check if binary was restored to expected location but not in PATH
         if [[ "${RUNNER_OS}" != "Windows" && -x "/usr/local/bin/leo" ]]; then
           INSTALLED_VERSION=$(/usr/local/bin/leo --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
+          if [[ "${INSTALLED_VERSION}" == "${INPUT_VERSION}" ]]; then
+            echo "::notice::Leo v${INPUT_VERSION} restored from cache"
+            echo "skip-build=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+        fi
+
+        if [[ "${RUNNER_OS}" == "Windows" && -x "${RUNNER_TEMP}/.local/bin/leo.exe" ]]; then
+          INSTALLED_VERSION=$("${RUNNER_TEMP}/.local/bin/leo.exe" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "unknown")
           if [[ "${INSTALLED_VERSION}" == "${INPUT_VERSION}" ]]; then
             echo "::notice::Leo v${INPUT_VERSION} restored from cache"
             echo "skip-build=true" >> "${GITHUB_OUTPUT}"
@@ -347,6 +357,55 @@ runs:
         COMMIT_SHA=$(git rev-parse HEAD)
         echo "Commit SHA: ${COMMIT_SHA}"
         echo "commit-sha=${COMMIT_SHA}" >> "${GITHUB_OUTPUT}"
+
+        if [[ ! -f "Cargo.lock" ]]; then
+          echo "::error::Cargo.lock not found in Leo release source"
+          exit 1
+        fi
+
+        BUILD_PACKAGE=""
+        BUILD_LAYOUT="legacy-root"
+
+        # Leo 4.x exposes a dedicated crates/leo package; older releases build from
+        # the repository root. Detect the layout explicitly to avoid relying on
+        # workspace defaults for newer releases while keeping 3.x compatible.
+        if [[ -f "crates/leo/Cargo.toml" ]]; then
+          BUILD_PACKAGE=$(awk '
+            BEGIN { in_package = 0 }
+            /^\[package\]/ { in_package = 1; next }
+            /^\[/ { if (in_package) exit }
+            in_package && $0 ~ /^name = "/ {
+              sub(/^name = "/, "", $0)
+              sub(/"$/, "", $0)
+              print
+              exit
+            }
+          ' "crates/leo/Cargo.toml")
+
+          if [[ -z "${BUILD_PACKAGE}" ]]; then
+            echo "::error::crates/leo/Cargo.toml does not define a package name"
+            exit 1
+          fi
+
+          if ! awk '
+            BEGIN { in_bin = 0; found = 0 }
+            /^\[\[bin\]\]/ { in_bin = 1; next }
+            /^\[/ { in_bin = 0 }
+            in_bin && $0 ~ /^name = "leo"$/ { found = 1 }
+            END { exit(found ? 0 : 1) }
+          ' "crates/leo/Cargo.toml"; then
+            echo "::error::crates/leo/Cargo.toml does not define a leo binary target"
+            exit 1
+          fi
+
+          BUILD_LAYOUT="crate-package"
+          echo "Detected Leo package layout: crates/leo -> ${BUILD_PACKAGE}"
+        else
+          echo "Detected legacy Leo layout: repository root build"
+        fi
+
+        echo "build-layout=${BUILD_LAYOUT}" >> "${GITHUB_OUTPUT}"
+        echo "build-package=${BUILD_PACKAGE}" >> "${GITHUB_OUTPUT}"
         
         # Check for GPG signature (informational only - ProvableHQ doesn't sign)
         echo ""
@@ -411,6 +470,8 @@ runs:
       env:
         WORKDIR: ${{ steps.config.outputs.workdir }}
         RUNNER_OS: ${{ runner.os }}
+        RUNNER_TEMP: ${{ runner.temp }}
+        BUILD_PACKAGE: ${{ steps.clone.outputs.build-package }}
       run: | # zizmor: ignore[github-env]
         set -euo pipefail
 
@@ -440,7 +501,12 @@ runs:
 
         export CARGO_INCREMENTAL=0
 
-        cargo build --release --locked
+        BUILD_ARGS=(--release --locked)
+        if [[ -n "${BUILD_PACKAGE}" ]]; then
+          BUILD_ARGS+=(-p "${BUILD_PACKAGE}")
+        fi
+
+        cargo build "${BUILD_ARGS[@]}"
 
         # Record end time
         END_TIME=$(date +%s)
@@ -449,7 +515,12 @@ runs:
         echo "duration=${DURATION}" >> "${GITHUB_OUTPUT}"
 
         # Verify binary exists
-        if [[ ! -f "target/release/leo" ]]; then
+        BINARY_PATH="target/release/leo"
+        if [[ "${RUNNER_OS}" == "Windows" ]]; then
+          BINARY_PATH="target/release/leo.exe"
+        fi
+
+        if [[ ! -f "${BINARY_PATH}" ]]; then
           echo "::error::Build completed but leo binary not found"
           ls -la target/release/ || true
           exit 1
@@ -461,15 +532,16 @@ runs:
         echo "::group::Installing Leo binary"
 
         if [[ "${RUNNER_OS}" == "Windows" ]]; then
-          mkdir -p "${HOME}/.local/bin"
-          cp target/release/leo.exe "${HOME}/.local/bin/leo.exe"
+          INSTALL_DIR="${RUNNER_TEMP}/.local/bin"
+          mkdir -p "${INSTALL_DIR}"
+          cp "${BINARY_PATH}" "${INSTALL_DIR}/leo.exe"
           # GITHUB_PATH write required on Windows - no pre-existing user-writable PATH location.
-          # This is safe: the path is a fixed literal (${HOME}/.local/bin), not attacker-controlled.
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-          echo "Installed to: ${HOME}/.local/bin/leo.exe"
+          # This is safe: the path is derived from runner.temp, which is runner-controlled.
+          echo "${INSTALL_DIR}" >> "${GITHUB_PATH}"
+          echo "Installed to: ${INSTALL_DIR}/leo.exe"
         else
           # On Linux/macOS, /usr/local/bin is already in PATH - no GITHUB_PATH modification needed.
-          sudo install -m 755 target/release/leo /usr/local/bin/leo
+          sudo install -m 755 "${BINARY_PATH}" /usr/local/bin/leo
           echo "Installed to: /usr/local/bin/leo"
         fi
 
@@ -483,6 +555,7 @@ runs:
       shell: bash
       env:
         RUNNER_OS: ${{ runner.os }}
+        RUNNER_TEMP: ${{ runner.temp }}
         INPUT_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
@@ -491,7 +564,7 @@ runs:
 
         # Ensure PATH is updated
         if [[ "${RUNNER_OS}" == "Windows" ]]; then
-          export PATH="${HOME}/.local/bin:${PATH}"
+          export PATH="${RUNNER_TEMP}/.local/bin:${PATH}"
         fi
 
         # Verify leo is available
