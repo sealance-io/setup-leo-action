@@ -505,7 +505,7 @@ jobs:
           persist-credentials: false
       - uses: ./
         with:
-          version: '3.5.0'
+          version: '4.0.0'
           enable-cache: 'false'  # Disable for faster iteration
 ```
 

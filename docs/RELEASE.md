@@ -79,10 +79,12 @@ When a new Leo version is released:
    ```bash
    curl -s "https://raw.githubusercontent.com/ProvableHQ/leo/v<VERSION>/rust-toolchain.toml"
    ```
+   For Leo `4.0.0`, this is `1.94.1`.
 
 3. Update `.github/workflows/test.yml`:
    - Add to `test-leo-versions` matrix
    - Update `LEO_VERSION` env var if it should be the new default
+   - Update smoke tests/examples if the Leo CLI or generated project layout changed
 
 4. Create a patch release documenting Leo version support.
 
