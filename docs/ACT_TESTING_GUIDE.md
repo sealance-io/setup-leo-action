@@ -48,7 +48,6 @@ Create `~/.actrc`:
 ```
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 --container-architecture linux/arm64
 ```
 
@@ -105,7 +104,6 @@ Same as Docker Desktop - create `~/.actrc`:
 ```
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 --container-architecture linux/arm64
 ```
 
@@ -184,7 +182,6 @@ export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.
 Create `.actrc` in project:
 ```
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 --container-architecture linux/arm64
 --container-daemon-socket -
 ```
@@ -222,7 +219,6 @@ Create `~/.actrc`:
 ```
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 ```
 
 #### Usage
@@ -274,7 +270,6 @@ export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 Create `~/.actrc`:
 ```
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 ```
 
 #### Known Limitations
@@ -365,7 +360,6 @@ act push
 # Runner image mappings
 -P ubuntu-24.04=catthehacker/ubuntu:act-22.04
 -P ubuntu-22.04=catthehacker/ubuntu:act-22.04
--P ubuntu-latest=catthehacker/ubuntu:act-22.04
 
 # Architecture (for Apple Silicon)
 --container-architecture linux/arm64
@@ -484,7 +478,7 @@ jobs:
   deploy:
     # Skip deployment when testing locally
     if: ${{ !github.event.act }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 ```
 
 Run with: `act -e event.json` where `event.json` contains `{"act": true}`

@@ -38,6 +38,9 @@ jobs:
   test-linux:
     name: Test (Linux)
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -100,6 +103,9 @@ jobs:
   test-macos-arm:
     name: Test (macOS ARM64)
     runs-on: macos-14
+    timeout-minutes: 120
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout
@@ -124,6 +130,9 @@ jobs:
   test-macos-x86:
     name: Test (macOS x86)
     runs-on: macos-15
+    timeout-minutes: 120
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout
@@ -148,6 +157,9 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [test-linux]  # Run after first test to check cache was created
     if: github.event_name != 'pull_request'  # Only on main (PRs don't save cache)
+    timeout-minutes: 45
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout
@@ -183,6 +195,9 @@ jobs:
   test-leo-versions:
     name: Test (Leo ${{ matrix.leo }} / Rust ${{ matrix.rust }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -236,7 +251,10 @@ jobs:
   # ===========================================================================
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -246,14 +264,45 @@ jobs:
 
       - name: Install lint dependencies
         run: |
-          # Install tools if missing (for act compatibility - GitHub runners have these)
-          if ! command -v shellcheck &>/dev/null || ! python3 -c "import yaml" 2>/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y shellcheck python3-yaml
+          # shellcheck and Go are pre-installed on GitHub-hosted runners.
+          # Only python3-yaml and act-missing tools need explicit install.
+          PACKAGES=()
+
+          if ! python3 -c "import yaml" 2>/dev/null; then
+            PACKAGES+=(python3-yaml)
+          fi
+
+          # Fallbacks for act (local testing) where runner tools may be absent.
+          if ! command -v shellcheck &>/dev/null; then
+            PACKAGES+=(shellcheck)
+          fi
+
+          if ! command -v go &>/dev/null; then
+            PACKAGES+=(golang-go)
+          fi
+
+          if [[ "${#PACKAGES[@]}" -gt 0 ]]; then
+            if command -v sudo &>/dev/null; then
+              SUDO="sudo"
+            else
+              SUDO=""
+            fi
+
+            ${SUDO} apt-get update
+            ${SUDO} apt-get install -y "${PACKAGES[@]}"
           fi
 
       - name: Lint scripts
-        run: shellcheck scripts/*.sh
+        run: |
+          shopt -s nullglob
+          scripts=(scripts/*.sh)
+
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
+            echo "No shell scripts to lint"
+            exit 0
+          fi
+
+          shellcheck "${scripts[@]}"
 
       - name: Validate action.yml
         run: |
@@ -261,24 +310,26 @@ jobs:
           python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
           echo "action.yml is valid YAML"
 
-      - name: Run zizmor security analysis
+      - name: Run actionlint
         env:
-          ZIZMOR_VERSION: "1.19.0"
+          ACTIONLINT_VERSION: "1.7.8"
         run: |
-          # Detect architecture
-          ARCH=$(uname -m)
-          case "$ARCH" in
-            x86_64)  ZIZMOR_ARCH="x86_64-unknown-linux-gnu" ;;
-            aarch64) ZIZMOR_ARCH="aarch64-unknown-linux-gnu" ;;
-            arm64)   ZIZMOR_ARCH="aarch64-unknown-linux-gnu" ;;
-            *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
-          esac
+          ACTIONLINT_BIN="$(command -v actionlint || true)"
 
-          # Download and install zizmor binary
-          curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-${ZIZMOR_ARCH}.tar.gz" \
-            -o zizmor.tar.gz
-          tar -xzf zizmor.tar.gz
-          chmod +x zizmor
+          if [[ -n "${ACTIONLINT_BIN}" ]] && "${ACTIONLINT_BIN}" -version 2>/dev/null | grep -q "v${ACTIONLINT_VERSION}"; then
+            echo "Using preinstalled actionlint ${ACTIONLINT_VERSION}"
+          else
+            mkdir -p "${RUNNER_TEMP}/actionlint-bin"
+            GOBIN="${RUNNER_TEMP}/actionlint-bin" go install "github.com/rhysd/actionlint/cmd/actionlint@v${ACTIONLINT_VERSION}"
+            ACTIONLINT_BIN="${RUNNER_TEMP}/actionlint-bin/actionlint"
+          fi
 
-          # Run with medium severity minimum
-          ./zizmor --min-severity medium .github/workflows/
+          "${ACTIONLINT_BIN}" -color
+
+      - name: Run zizmor security analysis
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+        with:
+          version: v1.23.1
+          advanced-security: false
+          min-severity: medium
+          inputs: .github/workflows/ action.yml

@@ -8,7 +8,7 @@ Security-hardened GitHub composite action that installs the [Leo](https://github
 
 ## Architecture
 
-Single composite action (`action.yml`) — all logic is inline bash, no JavaScript/TypeScript. The only external action dependency is `actions/cache` (SHA-pinned). Rustup is inlined (~10 lines) instead of using third-party actions.
+Single composite action (`action.yml`) — all logic is inline bash, no JavaScript/TypeScript. The shipped action only depends on `actions/cache` (SHA-pinned); CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of using third-party setup actions.
 
 **Flow** (step numbers match `# STEP N:` headers in `action.yml`):
 validate inputs → restore binary cache → (cache miss?) install Rust → restore cargo cache → clone Leo git tag → optional cargo audit → `cargo build --release --locked` → install binary → save caches → cleanup build dir
@@ -26,7 +26,10 @@ validate inputs → restore binary cache → (cache miss?) install Rust → rest
 python3 -c "import yaml; yaml.safe_load(open('action.yml'))"
 
 # Lint shell scripts
-shellcheck scripts/*.sh
+find scripts -name '*.sh' -type f -exec shellcheck {} +
+
+# Validate workflows and local action metadata
+actionlint
 
 # Run zizmor security analysis (version must match CI)
 zizmor --min-severity medium .github/workflows/
@@ -43,7 +46,7 @@ Test workflow (`.github/workflows/test.yml`):
 - **Platforms**: ubuntu-24.04, macos-14 (ARM64), macos-15 (x86_64)
 - **Leo version matrix**: 3.1.0–4.0.0, each paired with required Rust from upstream `rust-toolchain.toml`
 - **Triggers**: push to main (tests + cache save), PRs (tests only, `cache-save=never`), weekly Monday 06:00 UTC
-- **Lint job**: shellcheck, YAML validation, zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
+- **Lint job**: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
 - **Smoke tests**: `leo new` + `leo build` + `leo test`; Leo 4.x also tests `leo new --library`
 
 Dependabot checks GitHub Actions daily, 7-day cooldown, grouped into single PR.
