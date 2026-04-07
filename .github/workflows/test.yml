@@ -264,7 +264,7 @@ jobs:
 
       - name: Install lint dependencies
         run: |
-          # shellcheck and Go are pre-installed on GitHub-hosted runners.
+          # GitHub-hosted runners already include ShellCheck and Go.
           # Only python3-yaml and act-missing tools need explicit install.
           PACKAGES=()
 
