@@ -215,10 +215,10 @@ Building from source with `cargo build --locked`:
 | Source build only | cargo build --locked | ✅ Enforced |
 | Dependency pinning | --locked flag | ✅ Enforced |
 | Vulnerability scanning | cargo audit | ✅ Optional (default on) |
-| SHA-pinned actions | actions/cache@SHA | ✅ Enforced |
+| SHA-pinned actions | `actions/cache` in the shipped action; SHA-pinned `zizmor` action in CI | ✅ Enforced |
 | TLS 1.2+ only | curl/git flags | ✅ Enforced |
 | Tag verification | git describe --exact-match | ✅ Enforced |
-| No third-party binary tools | N/A | ✅ Enforced |
+| No unverified third-party binaries in the shipped action | CI-only lint tooling is isolated from the runtime install path | ✅ Enforced |
 
 ---
 
@@ -297,7 +297,7 @@ This action repository itself follows security best practices:
 - [x] **No secrets**: Action doesn't use or expose secrets
 - [x] **Auditable code**: ~580 lines of commented bash/YAML, fully readable
 - [x] **No pre-built binary downloads**: Leo built from source; runtime downloads limited to rustup.rs, crates.io deps (via Cargo.lock), and cargo-audit (when `run-audit=true`)
-- [x] **Workflow security linting**: zizmor analysis at medium severity in CI
+- [x] **Workflow security linting**: shellcheck, YAML validation, actionlint, and zizmor at medium severity in CI
 - [ ] **Branch protection**: (Configure in your fork)
 - [ ] **Signed commits**: (Configure in your fork)
 
