@@ -11,7 +11,7 @@ Security-hardened GitHub composite action that installs the [Leo](https://github
 Single composite action (`action.yml`) — all logic is inline bash, no JavaScript/TypeScript. The shipped action only depends on `actions/cache` (SHA-pinned); CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of using third-party setup actions.
 
 **Flow** (step numbers match `# STEP N:` headers in `action.yml`):
-validate inputs → restore binary cache → (cache miss?) install Rust → restore cargo cache → clone Leo git tag → optional cargo audit → `cargo build --release --locked` → install binary → save caches → cleanup build dir
+validate inputs → restore binary cache → (cache miss?) install Rust → restore cargo cache → resolve and clone Leo git tag → optional cargo audit → `cargo build --release --locked` → install binary → save caches → cleanup build dir
 
 **Two separate caches** with different invalidation patterns:
 - **Binary cache**: `leo-binary-v{version}-{os}-{arch}` — only invalidates on Leo version change
@@ -44,7 +44,7 @@ SHA-pinning: use [pinact](https://github.com/suzuki-shunsuke/pinact) to resolve 
 
 Test workflow (`.github/workflows/test.yml`):
 - **Platforms**: ubuntu-24.04, macos-14 (ARM64), macos-15 (x86_64)
-- **Leo version matrix**: 3.1.0–4.0.0, each paired with required Rust from upstream `rust-toolchain.toml`
+- **Leo version matrix**: 3.1.0–4.1.0, each paired with required Rust from upstream `rust-toolchain.toml`
 - **Triggers**: push to main (tests + cache save), PRs (tests only, `cache-save=never`), weekly Monday 06:00 UTC
 - **Lint job**: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
 - **Smoke tests**: `leo new` + `leo build` + `leo test`; Leo 4.x also tests `leo new --library`
@@ -64,7 +64,7 @@ These rules must never be violated:
 ## Adding a New Leo Version
 
 1. `./scripts/verify-release.sh <version>` — checks tag, Cargo.lock, build layout, audit
-2. Check required Rust: `curl -s "https://raw.githubusercontent.com/ProvableHQ/leo/v<VERSION>/rust-toolchain.toml"`
+2. Check required Rust using the source tag reported by `verify-release.sh` (`leo-lang-v<VERSION>` for modern releases, `v<VERSION>` for older releases)
 3. Update `.github/workflows/test.yml`: add to `test-leo-versions` matrix, update `LEO_VERSION` env if new default, update smoke tests if CLI changed
 4. Create a patch release documenting support
 

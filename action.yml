@@ -53,11 +53,11 @@ branding:
 
 inputs:
   version:
-    description: 'Leo version to install (without v prefix, e.g., "4.0.0")'
+    description: 'Leo version to install (without v prefix, e.g., "4.1.0")'
     required: true
   
   rust-version:
-    description: 'Rust toolchain version (e.g., "1.94.1" or "stable")'
+    description: 'Rust toolchain version (e.g., "1.96.0" or "stable")'
     required: false
     default: 'stable'
   
@@ -133,7 +133,7 @@ runs:
         VERSION="${INPUT_VERSION}"
         if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
           echo "::error::Invalid version format: ${VERSION}"
-          echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 4.0.0 or 4.0.0-beta.1)"
+          echo "::error::Expected format: X.Y.Z or X.Y.Z-suffix (e.g., 4.1.0 or 4.1.0-beta.1)"
           exit 1
         fi
 
@@ -322,7 +322,7 @@ runs:
 
         VERSION="${INPUT_VERSION}"
 
-        echo "::group::Cloning Leo v${VERSION} from GitHub"
+        echo "::group::Cloning Leo ${VERSION} from GitHub"
         
         # =====================================================================
         # WHY WE CLONE FROM GITHUB INSTEAD OF cargo install FROM crates.io:
@@ -334,10 +334,28 @@ runs:
         #    (crates.io versions may diverge or be published by different keys)
         # =====================================================================
         
-        # Clone only the specific tag (shallow clone for speed)
+        SOURCE_TAG=""
+        for TAG_CANDIDATE in "leo-lang-v${VERSION}" "v${VERSION}"; do
+          echo "Checking for source tag: ${TAG_CANDIDATE}"
+          if git ls-remote --exit-code --tags https://github.com/ProvableHQ/leo.git "refs/tags/${TAG_CANDIDATE}" >/dev/null 2>&1; then
+            SOURCE_TAG="${TAG_CANDIDATE}"
+            break
+          fi
+        done
+
+        if [[ -z "${SOURCE_TAG}" ]]; then
+          echo "::error::Leo source tag not found for version ${VERSION}"
+          echo "::error::Checked: leo-lang-v${VERSION}, v${VERSION}"
+          exit 1
+        fi
+
+        echo "Resolved source tag: ${SOURCE_TAG}"
+        echo "source-tag=${SOURCE_TAG}" >> "${GITHUB_OUTPUT}"
+
+        # Clone only the resolved tag (shallow clone for speed)
         git clone \
           --depth 1 \
-          --branch "v${VERSION}" \
+          --branch "${SOURCE_TAG}" \
           --single-branch \
           https://github.com/ProvableHQ/leo.git \
           "${WORKDIR}/leo"
@@ -348,8 +366,8 @@ runs:
         ACTUAL_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
         echo "Cloned tag: ${ACTUAL_TAG}"
         
-        if [[ "${ACTUAL_TAG}" != "v${VERSION}" ]]; then
-          echo "::error::Tag mismatch! Expected v${VERSION}, got ${ACTUAL_TAG}"
+        if [[ "${ACTUAL_TAG}" != "${SOURCE_TAG}" ]]; then
+          echo "::error::Tag mismatch! Expected ${SOURCE_TAG}, got ${ACTUAL_TAG}"
           exit 1
         fi
         
@@ -410,7 +428,7 @@ runs:
         # Check for GPG signature (informational only - ProvableHQ doesn't sign)
         echo ""
         echo "--- GPG Signature Check (Informational) ---"
-        if git verify-tag "v${VERSION}" 2>/dev/null; then
+        if git verify-tag "${SOURCE_TAG}" 2>/dev/null; then
           echo "✓ Tag is GPG signed and verified"
           echo "tag-signed=true" >> "${GITHUB_OUTPUT}"
         else

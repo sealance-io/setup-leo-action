@@ -68,7 +68,7 @@ This action **builds Leo from source** rather than downloading pre-built binarie
 
 ### Current State of ProvableHQ Releases
 
-As of April 2026, including Leo `v4.0.0` released on March 31, 2026, ProvableHQ's Leo releases have:
+As of May 2026, including Leo `leo-lang-v4.1.0` released on May 29, 2026, ProvableHQ's Leo releases have:
 
 | Security Property | Status | Implication |
 |-------------------|--------|-------------|
@@ -85,7 +85,7 @@ As of April 2026, including Leo `v4.0.0` released on March 31, 2026, ProvableHQ'
 ProvableHQ publishes SHA256 checksums alongside their binaries:
 
 ```text
-95bcda063c8f0aba...  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
+95bcda063c8f0aba...  leo-v4.1.0-x86_64-unknown-linux-gnu.zip
 ```
 
 This checksum **provides no security** against a compromised release pipeline because:
@@ -235,8 +235,8 @@ This action can support pre-built binary downloads when ProvableHQ implements **
 
 **Verification method**:
 ```bash
-git verify-tag v4.0.0
-gpg --verify leo-v4.0.0.tar.gz.asc leo-v4.0.0.tar.gz
+git verify-tag leo-lang-v4.1.0
+gpg --verify leo-v4.1.0.tar.gz.asc leo-v4.1.0.tar.gz
 ```
 
 ## Option 2: Sigstore/Cosign Signatures
@@ -249,11 +249,11 @@ gpg --verify leo-v4.0.0.tar.gz.asc leo-v4.0.0.tar.gz
 **Verification method**:
 ```bash
 cosign verify-blob \
-  --certificate leo-v4.0.0.pem \
-  --signature leo-v4.0.0.sig \
+  --certificate leo-v4.1.0.pem \
+  --signature leo-v4.1.0.sig \
   --certificate-identity release@provablehq.com \
   --certificate-oidc-issuer https://accounts.google.com \
-  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
+  leo-v4.1.0-x86_64-unknown-linux-gnu.zip
 ```
 
 ## Option 3: SLSA Provenance Attestations
@@ -266,10 +266,10 @@ cosign verify-blob \
 **Verification method**:
 ```bash
 slsa-verifier verify-artifact \
-  --provenance-path leo-v4.0.0.intoto.jsonl \
+  --provenance-path leo-v4.1.0.intoto.jsonl \
   --source-uri github.com/ProvableHQ/leo \
-  --source-tag v4.0.0 \
-  leo-v4.0.0-x86_64-unknown-linux-gnu.zip
+  --source-tag leo-lang-v4.1.0 \
+  leo-v4.1.0-x86_64-unknown-linux-gnu.zip
 ```
 
 ## Option 4: GitHub Artifact Attestations
@@ -280,7 +280,7 @@ slsa-verifier verify-artifact \
 
 **Verification method**:
 ```bash
-gh attestation verify leo-v4.0.0-x86_64-unknown-linux-gnu.zip \
+gh attestation verify leo-v4.1.0-x86_64-unknown-linux-gnu.zip \
   --owner ProvableHQ
 ```
 
