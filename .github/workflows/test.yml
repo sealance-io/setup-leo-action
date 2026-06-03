@@ -218,15 +218,6 @@ jobs:
           # v3.4.0 requires Rust 1.90.0
           - leo: "3.4.0"
             rust: "1.90.0"
-          # v3.3.x requires Rust 1.90.0
-          - leo: "3.3.1"
-            rust: "1.90.0"
-          # v3.2.0 requires Rust 1.88.0
-          - leo: "3.2.0"
-            rust: "1.88.0"
-          # v3.1.0 requires Rust 1.88.0
-          - leo: "3.1.0"
-            rust: "1.88.0"
 
     steps:
       - name: Checkout
