@@ -20,7 +20,7 @@ Security-hardened GitHub Action that installs the [Leo](https://github.com/Prova
 
 Composite action (`action.yml`) using only `actions/cache` (SHA-pinned) as external dependency. CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of third-party setup actions. Two separate caches: binary (version+OS+arch) and cargo registry (version+rust+OS+arch).
 
-Flow: validate inputs > restore binary cache > (miss?) install Rust > restore cargo cache > clone Leo tag > optional cargo audit > `cargo build --release --locked` > install binary > save caches > cleanup.
+Flow: validate inputs > restore binary cache > (miss?) install Rust > restore cargo cache > resolve and clone Leo tag > optional cargo audit > `cargo build --release --locked` > install binary > save caches > cleanup.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design and rationale.
 
@@ -49,7 +49,7 @@ SHA-pinning: use [pinact](https://github.com/suzuki-shunsuke/pinact) to resolve 
 
 Test matrix in `.github/workflows/test.yml`:
 - Platforms: ubuntu-24.04, macos-14 (ARM64), macos-15 (x86_64)
-- Leo versions 3.1.0-4.0.0, each paired with required Rust from `rust-toolchain.toml`
+- Leo versions 3.1.0-4.1.0, each paired with required Rust from `rust-toolchain.toml`
 - Triggers: push to main (tests + cache save), PRs (tests only, cache-save=never), weekly Monday 06:00 UTC
 - Lint job: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
 

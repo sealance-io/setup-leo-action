@@ -77,9 +77,13 @@ When a new Leo version is released:
 
 2. Check required Rust version:
    ```bash
-   curl -s "https://raw.githubusercontent.com/ProvableHQ/leo/v<VERSION>/rust-toolchain.toml"
+   # Use the resolved source tag reported by verify-release.sh.
+   # Modern Leo releases use leo-lang-v<VERSION>; older releases use v<VERSION>.
+   VERSION="4.1.0"
+   SOURCE_TAG="leo-lang-v${VERSION}"
+   curl -s "https://raw.githubusercontent.com/ProvableHQ/leo/${SOURCE_TAG}/rust-toolchain.toml"
    ```
-   For Leo `4.0.0`, this is `1.94.1`.
+   For Leo `4.1.0`, this is `1.96.0`.
 
 3. Update `.github/workflows/test.yml`:
    - Add to `test-leo-versions` matrix

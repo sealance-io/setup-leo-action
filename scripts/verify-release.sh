@@ -6,10 +6,10 @@
 # Run this before updating the action to use a new Leo version.
 #
 # Usage:
-#   ./scripts/verify-release.sh 4.0.0
+#   ./scripts/verify-release.sh 4.1.0
 #
 # This script will:
-# 1. Check that the version exists as a git tag
+# 1. Check that the version exists as a source tag
 # 2. Attempt to verify GPG signature (informational - will fail)
 # 3. Check for SLSA attestations (informational - will fail)
 # 4. Clone and verify Cargo.lock exists
@@ -23,45 +23,63 @@ VERSION="${1:-}"
 
 if [[ -z "${VERSION}" ]]; then
     echo "Usage: $0 <version>"
-    echo "Example: $0 4.0.0"
+    echo "Example: $0 4.1.0"
     exit 1
 fi
 
 echo "=============================================="
-echo "Verifying Leo v${VERSION} Release"
+echo "Verifying Leo ${VERSION} Release"
 echo "=============================================="
 echo ""
 echo "Repository: https://github.com/ProvableHQ/leo"
-echo "Version: v${VERSION}"
+echo "Version: ${VERSION}"
 echo ""
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "${WORKDIR}"' EXIT
 
 # -----------------------------------------------------------------------------
-# Check 1: Verify tag exists
+# Check 1: Verify source tag exists
 # -----------------------------------------------------------------------------
-echo "--- Check 1: Tag Exists ---"
-if git ls-remote --tags https://github.com/ProvableHQ/leo "refs/tags/v${VERSION}" | grep -q "v${VERSION}"; then
-    echo "✓ Tag v${VERSION} exists"
+echo "--- Check 1: Source Tag Exists ---"
+SOURCE_TAG=""
+for TAG_CANDIDATE in "leo-lang-v${VERSION}" "v${VERSION}"; do
+    echo "Checking tag: ${TAG_CANDIDATE}"
+    if git ls-remote --exit-code --tags https://github.com/ProvableHQ/leo.git "refs/tags/${TAG_CANDIDATE}" >/dev/null 2>&1; then
+        SOURCE_TAG="${TAG_CANDIDATE}"
+        break
+    fi
+done
+
+if [[ -n "${SOURCE_TAG}" ]]; then
+    echo "✓ Tag ${SOURCE_TAG} exists"
 else
-    echo "✗ Tag v${VERSION} NOT FOUND"
-    echo "  Available tags:"
-    git ls-remote --tags https://github.com/ProvableHQ/leo | tail -10
+    echo "✗ No source tag found for Leo ${VERSION}"
+    echo "  Checked: leo-lang-v${VERSION}, v${VERSION}"
+    echo "  Recent tags:"
+    git ls-remote --tags https://github.com/ProvableHQ/leo.git | tail -10
     exit 1
 fi
+echo "  Resolved source tag: ${SOURCE_TAG}"
 echo ""
 
 # -----------------------------------------------------------------------------
 # Check 2: Clone specific tag
 # -----------------------------------------------------------------------------
 echo "--- Check 2: Clone Tag ---"
-git clone --depth 1 --branch "v${VERSION}" \
+git clone --depth 1 --branch "${SOURCE_TAG}" \
     https://github.com/ProvableHQ/leo.git "${WORKDIR}/leo" 2>&1
 
 cd "${WORKDIR}/leo"
+ACTUAL_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
+if [[ "${ACTUAL_TAG}" != "${SOURCE_TAG}" ]]; then
+    echo "✗ Tag mismatch! Expected ${SOURCE_TAG}, got ${ACTUAL_TAG}"
+    exit 1
+fi
+
 COMMIT_SHA=$(git rev-parse HEAD)
 echo "✓ Cloned successfully"
+echo "  Tag: ${SOURCE_TAG}"
 echo "  Commit: ${COMMIT_SHA}"
 echo ""
 
@@ -69,7 +87,7 @@ echo ""
 # Check 3: GPG Signature (Informational)
 # -----------------------------------------------------------------------------
 echo "--- Check 3: GPG Signature (Informational) ---"
-if git verify-tag "v${VERSION}" 2>/dev/null; then
+if git verify-tag "${SOURCE_TAG}" 2>/dev/null; then
     echo "✓ Tag is GPG signed and verified"
     SIGNED="true"
 else
@@ -84,7 +102,7 @@ echo ""
 # Check 4: SLSA Attestations (Informational)
 # -----------------------------------------------------------------------------
 echo "--- Check 4: SLSA Attestations (Informational) ---"
-RELEASE_URL="https://github.com/ProvableHQ/leo/releases/tag/v${VERSION}"
+RELEASE_URL="https://github.com/ProvableHQ/leo/releases/tag/${SOURCE_TAG}"
 echo "Checking for .intoto.jsonl files in release assets..."
 
 # This would require GitHub API; simplified check
@@ -208,11 +226,12 @@ echo ""
 # Summary
 # -----------------------------------------------------------------------------
 echo "=============================================="
-echo "Verification Summary for Leo v${VERSION}"
+echo "Verification Summary for Leo ${VERSION}"
 echo "=============================================="
 echo ""
 echo "| Check | Status |"
 echo "|-------|--------|"
+echo "| Source tag | ${SOURCE_TAG} |"
 echo "| Tag exists | ✓ |"
 echo "| Clone successful | ✓ |"
 echo "| GPG signed | ${SIGNED} |"
