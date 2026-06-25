@@ -6,7 +6,7 @@
 # Run this before updating the action to use a new Leo version.
 #
 # Usage:
-#   ./scripts/verify-release.sh 4.1.0
+#   ./scripts/verify-release.sh 4.2.0
 #
 # This script will:
 # 1. Check that the version exists as a source tag
@@ -23,7 +23,7 @@ VERSION="${1:-}"
 
 if [[ -z "${VERSION}" ]]; then
     echo "Usage: $0 <version>"
-    echo "Example: $0 4.1.0"
+    echo "Example: $0 4.2.0"
     exit 1
 fi
 
@@ -71,9 +71,12 @@ git clone --depth 1 --branch "${SOURCE_TAG}" \
     https://github.com/ProvableHQ/leo.git "${WORKDIR}/leo" 2>&1
 
 cd "${WORKDIR}/leo"
-ACTUAL_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "unknown")
-if [[ "${ACTUAL_TAG}" != "${SOURCE_TAG}" ]]; then
-    echo "✗ Tag mismatch! Expected ${SOURCE_TAG}, got ${ACTUAL_TAG}"
+# ProvableHQ tags every workspace crate at the same release commit, so
+# `git describe --exact-match` may report a sibling tag (e.g. leo-lsp-v*)
+# rather than ours. Assert SOURCE_TAG is among the tags pointing at HEAD.
+if ! git tag --points-at HEAD | grep -Fxq "${SOURCE_TAG}"; then
+    echo "✗ Tag mismatch! ${SOURCE_TAG} does not point at the checked-out commit"
+    echo "  Tags at HEAD: $(git tag --points-at HEAD | paste -sd, -)"
     exit 1
 fi
 
