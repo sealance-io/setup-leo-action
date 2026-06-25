@@ -104,7 +104,7 @@ setup-leo-action
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `version` | Yes | — | Leo version (e.g., `4.1.0`) |
+| `version` | Yes | — | Leo version (e.g., `4.2.0`) |
 | `rust-version` | No | `stable` | Rust toolchain version |
 | `enable-cache` | No | `true` | Enable binary + cargo caching |
 | `cache-save` | No | `on-success` | When to save: `always`, `on-success`, `never` |

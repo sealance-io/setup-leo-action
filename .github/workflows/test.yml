@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  LEO_VERSION: "4.1.0"  # Latest version to test with
+  LEO_VERSION: "4.2.0"  # Default Leo version to test with
 
 jobs:
   # ===========================================================================
@@ -203,9 +203,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Latest release - also test with stable Rust
-          - leo: "4.1.0"
+          # New default version - also test with stable Rust
+          - leo: "4.2.0"
             rust: "stable"
+          # leo-lang-v4.2.0 requires Rust 1.96.0
+          - leo: "4.2.0"
+            rust: "1.96.0"
           # leo-lang-v4.1.0 requires Rust 1.96.0
           - leo: "4.1.0"
             rust: "1.96.0"
