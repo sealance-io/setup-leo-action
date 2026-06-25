@@ -44,7 +44,7 @@ SHA-pinning: use [pinact](https://github.com/suzuki-shunsuke/pinact) to resolve 
 
 Test workflow (`.github/workflows/test.yml`):
 - **Platforms**: ubuntu-24.04, macos-14 (ARM64), macos-15 (x86_64)
-- **Leo version matrix**: 3.4.0–4.2.0, each paired with required Rust from upstream `rust-toolchain.toml`
+- **Leo version matrix**: 3.4.0–4.3.0, each paired with required Rust from upstream `rust-toolchain.toml`
 - **Triggers**: push to main (tests + cache save), PRs (tests only, `cache-save=never`), weekly Monday 06:00 UTC
 - **Lint job**: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
 - **Smoke tests**: `leo new` + `leo build` + `leo test`; Leo 4.x also tests `leo new --library`
