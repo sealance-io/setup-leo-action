@@ -499,7 +499,7 @@ jobs:
           persist-credentials: false
       - uses: ./
         with:
-          version: '4.2.0'
+          version: '4.3.0'
           enable-cache: 'false'  # Disable for faster iteration
 ```
 

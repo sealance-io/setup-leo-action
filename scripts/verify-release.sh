@@ -6,7 +6,7 @@
 # Run this before updating the action to use a new Leo version.
 #
 # Usage:
-#   ./scripts/verify-release.sh 4.2.0
+#   ./scripts/verify-release.sh 4.3.0
 #
 # This script will:
 # 1. Check that the version exists as a source tag
@@ -23,7 +23,7 @@ VERSION="${1:-}"
 
 if [[ -z "${VERSION}" ]]; then
     echo "Usage: $0 <version>"
-    echo "Example: $0 4.2.0"
+    echo "Example: $0 4.3.0"
     exit 1
 fi
 
