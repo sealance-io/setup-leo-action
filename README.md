@@ -20,7 +20,7 @@ This action deliberately **does not support pre-built binaries** because Provabl
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '4.3.0'
+    version: '4.3.1'
 ```
 
 That's it. The action handles Rust installation, caching, and building.
@@ -41,7 +41,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '4.3.0'
+          version: '4.3.1'
       
       - run: leo build
       - run: leo test
@@ -72,7 +72,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '4.3.0'
+          version: '4.3.1'
           # Save cache only on main branch to avoid PR cache pollution
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
       
@@ -84,7 +84,7 @@ jobs:
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '4.3.0'
+    version: '4.3.1'
     run-audit: 'true'
     audit-deny-warnings: 'true'  # Fail on any vulnerability
 ```
@@ -108,7 +108,7 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '4.3.0'
+          version: '4.3.1'
       
       - run: leo build
 ```
@@ -118,15 +118,15 @@ jobs:
 ```yaml
 - uses: sealance-io/setup-leo-action@<SHA>
   with:
-    version: '4.3.0'
-    rust-version: '1.96.0'  # Leo v4.3.0 minimum
+    version: '4.3.1'
+    rust-version: '1.96.0'  # Leo v4.3.1 minimum
 ```
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `version` | **Yes** | - | Leo version without `v` prefix (e.g., `4.3.0`) |
+| `version` | **Yes** | - | Leo version without `v` prefix (e.g., `4.3.1`) |
 | `rust-version` | No | `stable` | Rust toolchain version |
 | `enable-cache` | No | `true` | Enable caching of Leo binary and cargo registry |
 | `cache-save` | No | `on-success` | When to save cache: `always`, `on-success`, `never` |
@@ -153,7 +153,7 @@ This action uses **two separate caches** with different invalidation patterns:
 
 ```
 Key: leo-binary-v{version}-{os}-{arch}
-Example: leo-binary-v4.3.0-linux-x86_64
+Example: leo-binary-v4.3.1-linux-x86_64
 ```
 
 - **Contents**: The compiled `leo` binary only
@@ -165,7 +165,7 @@ Example: leo-binary-v4.3.0-linux-x86_64
 
 ```
 Key: leo-cargo-v{version}-{rust-version}-{os}-{arch}
-Example: leo-cargo-v4.3.0-1.96.0-linux-x86_64
+Example: leo-cargo-v4.3.1-1.96.0-linux-x86_64
 ```
 
 - **Contents**: `~/.cargo/registry/index/`, `~/.cargo/registry/cache/`, `~/.cargo/git/db/`
@@ -185,8 +185,8 @@ Example: leo-cargo-v4.3.0-1.96.0-linux-x86_64
 
 ```
 main branch
-├── Creates: leo-binary-v4.3.0-linux-x86_64
-├── Creates: leo-cargo-v4.3.0-1.96.0-linux-x86_64
+├── Creates: leo-binary-v4.3.1-linux-x86_64
+├── Creates: leo-cargo-v4.3.1-1.96.0-linux-x86_64
 │
 feature-branch (branched from main)
 ├── CAN restore: caches from main ✅
@@ -341,7 +341,7 @@ Feature branches can only access caches from:
 The cloned git tag doesn't match the resolved source tag.
 
 **Solutions**:
-1. Verify the source tag exists: `./scripts/verify-release.sh 4.3.0`
+1. Verify the source tag exists: `./scripts/verify-release.sh 4.3.1`
 2. Check for typos in the version input
 
 ## cargo audit failures
