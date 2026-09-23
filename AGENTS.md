@@ -2,25 +2,9 @@
 
 Security-hardened GitHub Action that installs the [Leo](https://github.com/ProvableHQ/leo) compiler by building from source. Pre-built binaries are deliberately unsupported because ProvableHQ releases lack cryptographic verification (no GPG signatures, Sigstore, or SLSA attestations).
 
-## File Map
-
-| Path | Purpose |
-|------|---------|
-| `action.yml` | Composite action — all logic in bash |
-| `scripts/verify-release.sh` | Verify a Leo release before updating |
-| `.github/workflows/test.yml` | CI: multi-platform test matrix |
-| `.github/workflows/release.yml` | Automated GitHub Releases on semver tags |
-| `.pinact.yaml` | Config for SHA-pinning action references |
-| `docs/ARCHITECTURE.md` | Design diagrams, caching strategy, rationale |
-| `docs/THREAT_MODEL.md` | Trust boundaries, threat analysis (T1-T6) |
-| `docs/ACT_TESTING_GUIDE.md` | Local testing with nektos/act |
-| `docs/RELEASE.md` | Versioning, release process, Leo version updates |
-
 ## Architecture
 
 Composite action (`action.yml`) — all logic is inline bash, no JavaScript/TypeScript — using only `actions/cache` (SHA-pinned) as external dependency. CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of third-party setup actions.
-
-Flow (step numbers match `# STEP N:` headers in `action.yml`): validate inputs > restore binary cache > (miss?) install Rust > restore cargo cache > resolve and clone Leo tag > optional cargo audit > `cargo build --release --locked` > install binary > save caches > cleanup.
 
 Two separate caches with different invalidation patterns:
 - Binary cache: `leo-binary-v{version}-{os}-{arch}` — only invalidates on Leo version change
@@ -53,14 +37,7 @@ SHA-pinning: use [pinact](https://github.com/suzuki-shunsuke/pinact) to resolve 
 
 ## CI
 
-Test matrix in `.github/workflows/test.yml`:
-- Platforms: ubuntu-24.04, macos-14 (ARM64), macos-15 (x86_64)
-- Leo versions 3.4.0-4.3.1, each paired with required Rust from `rust-toolchain.toml`
-- Triggers: push to main (tests + cache save), PRs (tests only, cache-save=never), weekly Monday 06:00 UTC
 - Lint job: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
-- Smoke tests: `leo new` + `leo build` + `leo test`; Leo 4.x also tests `leo new --library`
-
-Dependabot checks GitHub Actions daily (`0 9 * * *` UTC), 7-day cooldown, grouped into single PR.
 
 ## Invariants
 
