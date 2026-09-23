@@ -19,6 +19,6 @@ jobs:
       
       - uses: sealance-io/setup-leo-action@<SHA>
         with:
-          version: '4.3.1'
+          version: '4.4.2'
       
       - run: leo build
