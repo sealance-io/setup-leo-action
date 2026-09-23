@@ -18,9 +18,15 @@ Security-hardened GitHub Action that installs the [Leo](https://github.com/Prova
 
 ## Architecture
 
-Composite action (`action.yml`) using only `actions/cache` (SHA-pinned) as external dependency. CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of third-party setup actions. Two separate caches: binary (version+OS+arch) and cargo registry (version+rust+OS+arch).
+Composite action (`action.yml`) — all logic is inline bash, no JavaScript/TypeScript — using only `actions/cache` (SHA-pinned) as external dependency. CI workflows additionally use pinned lint tooling. Rustup is inlined (~10 lines) instead of third-party setup actions.
 
-Flow: validate inputs > restore binary cache > (miss?) install Rust > restore cargo cache > resolve and clone Leo tag > optional cargo audit > `cargo build --release --locked` > install binary > save caches > cleanup.
+Flow (step numbers match `# STEP N:` headers in `action.yml`): validate inputs > restore binary cache > (miss?) install Rust > restore cargo cache > resolve and clone Leo tag > optional cargo audit > `cargo build --release --locked` > install binary > save caches > cleanup.
+
+Two separate caches with different invalidation patterns:
+- Binary cache: `leo-binary-v{version}-{os}-{arch}` — only invalidates on Leo version change
+- Cargo registry cache: `leo-cargo-v{version}-{rust}-{os}-{arch}` — invalidates on Leo or Rust version change, with restore-keys fallback
+
+Leo 4.x layout detection: Leo 4.x moved the binary to `crates/leo/Cargo.toml`. The clone step auto-detects this and passes `-p <package>` to cargo build. Leo 3.x builds from the workspace root.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design and rationale.
 
@@ -52,6 +58,7 @@ Test matrix in `.github/workflows/test.yml`:
 - Leo versions 3.4.0-4.3.1, each paired with required Rust from `rust-toolchain.toml`
 - Triggers: push to main (tests + cache save), PRs (tests only, cache-save=never), weekly Monday 06:00 UTC
 - Lint job: shellcheck, YAML validation, actionlint, and zizmor at medium severity; suppress false positives with `# zizmor: ignore[rule-name]`
+- Smoke tests: `leo new` + `leo build` + `leo test`; Leo 4.x also tests `leo new --library`
 
 Dependabot checks GitHub Actions daily (`0 9 * * *` UTC), 7-day cooldown, grouped into single PR.
 
@@ -70,6 +77,13 @@ These rules must never be violated:
 Builds from source with locked dependencies to eliminate binary supply-chain risk. All action references SHA-pinned. Minimal permissions model.
 
 See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for trust boundaries, threat analysis, and criteria for future binary download support.
+
+## Adding a New Leo Version
+
+1. `./scripts/verify-release.sh <version>` — checks tag, Cargo.lock, build layout, audit
+2. Check required Rust using the source tag reported by `verify-release.sh` (`leo-lang-v<VERSION>` for modern releases, `v<VERSION>` for older releases)
+3. Update `.github/workflows/test.yml`: add to `test-leo-versions` matrix, update `LEO_VERSION` env if new default, update smoke tests if CLI changed
+4. Create a patch release documenting support
 
 ## Procedures
 
