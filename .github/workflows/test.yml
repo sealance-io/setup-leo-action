@@ -102,7 +102,7 @@ jobs:
   # ===========================================================================
   test-macos-arm:
     name: Test (macOS ARM64)
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     permissions:
       contents: read
@@ -129,7 +129,7 @@ jobs:
   # ===========================================================================
   test-macos-x86:
     name: Test (macOS x86)
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 120
     permissions:
       contents: read

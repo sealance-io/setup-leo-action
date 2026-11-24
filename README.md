@@ -98,8 +98,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-          - os: macos-14       # ARM64
-          - os: macos-15       # x86_64
+          - os: macos-15       # ARM64
+          - os: macos-15-intel # x86_64
           - os: windows-2022
     
     runs-on: ${{ matrix.os }}
